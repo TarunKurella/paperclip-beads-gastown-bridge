@@ -1,0 +1,23 @@
+{
+  "mode": "real",
+  "db_path": "./state/bridge.db",
+  "worker_id": "node-1",
+  "paperclip_base_url": "https://paperclip.example.com/api/v1",
+  "paperclip_token": "${PAPERCLIP_TOKEN}",
+  "beads_bin": "bd",
+  "gastown_bin": "gt",
+  "metrics": {
+    "file_path": "./state/bridge.metrics.json"
+  },
+  "alerts": {
+    "webhook_url": "https://hooks.example.com/bridge-alerts",
+    "dlq_warn_threshold": 5
+  },
+  "intervals": {
+    "phase1_seconds": 30,
+    "phase2_seconds": 60,
+    "phase3_seconds": 120,
+    "outbox_drain_seconds": 15,
+    "loop_sleep_seconds": 1
+  }
+}

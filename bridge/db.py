@@ -113,6 +113,11 @@ def mark_outbox_sent(conn: sqlite3.Connection, event_id: str) -> None:
     conn.commit()
 
 
+def count_outbox_by_status(conn: sqlite3.Connection, status: str) -> int:
+    row = conn.execute("SELECT COUNT(*) FROM outbox_events WHERE status=?", (status,)).fetchone()
+    return int(row[0]) if row else 0
+
+
 def mark_outbox_retry_or_dlq(conn: sqlite3.Connection, event_id: str, max_retries: int = 3) -> None:
     row = conn.execute(
         "SELECT retry_count FROM outbox_events WHERE event_id=?", (event_id,)

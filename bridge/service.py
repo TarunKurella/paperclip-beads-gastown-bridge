@@ -49,7 +49,7 @@ class BridgeService:
             db.set_last_synced_status(self.conn, "beads", b.id, b.status)
         return result
 
-    def process_outbox(self, max_retries: int = 3) -> int:
+    def process_outbox(self, max_retries: int = 3, on_failure: callable | None = None) -> int:
         sent = 0
         for row in db.fetch_pending_outbox(self.conn):
             payload = json.loads(row["payload"])
@@ -60,8 +60,10 @@ class BridgeService:
                     self.adapters.gastown.attach_hook(payload["item_id"], payload["assignee"])
                 db.mark_outbox_sent(self.conn, row["event_id"])
                 sent += 1
-            except Exception:
+            except Exception as exc:
                 db.mark_outbox_retry_or_dlq(self.conn, row["event_id"], max_retries=max_retries)
+                if on_failure:
+                    on_failure(row, exc)
         return sent
 
     def phase2_assignment_automation(self) -> SyncResult:

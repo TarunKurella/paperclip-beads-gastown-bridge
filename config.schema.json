@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "paperclip-beads-gastown-bridge config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {"type": "string", "enum": ["mock", "real"]},
+    "db_path": {"type": "string", "minLength": 1},
+    "worker_id": {"type": "string", "minLength": 1},
+    "paperclip_base_url": {"type": "string", "minLength": 1},
+    "paperclip_token": {"type": "string"},
+    "beads_bin": {"type": "string", "minLength": 1},
+    "gastown_bin": {"type": "string", "minLength": 1},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_path": {"type": "string", "minLength": 1}
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "webhook_url": {"type": "string"},
+        "dlq_warn_threshold": {"type": "integer", "minimum": 1}
+      }
+    },
+    "intervals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phase1_seconds": {"type": "integer", "minimum": 1},
+        "phase2_seconds": {"type": "integer", "minimum": 1},
+        "phase3_seconds": {"type": "integer", "minimum": 1},
+        "outbox_drain_seconds": {"type": "integer", "minimum": 1},
+        "loop_sleep_seconds": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

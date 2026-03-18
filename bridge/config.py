@@ -43,6 +43,9 @@ class RuntimeConfig:
     paperclip_token: str | None = None
     beads_bin: str = "bd"
     gastown_bin: str = "gt"
+    # Safety defaults to avoid bi-directional race conditions
+    single_writer: bool = True
+    status_authority: str = "paperclip"
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -88,6 +91,8 @@ def _load_env() -> dict[str, Any]:
         "paperclip_token": os.getenv("PAPERCLIP_TOKEN"),
         "beads_bin": os.getenv("BEADS_BIN"),
         "gastown_bin": os.getenv("GASTOWN_BIN"),
+        "single_writer": os.getenv("BRIDGE_SINGLE_WRITER"),
+        "status_authority": os.getenv("BRIDGE_STATUS_AUTHORITY"),
         "metrics": {"file_path": os.getenv("BRIDGE_METRICS_FILE")},
         "alerts": {
             "webhook_url": os.getenv("BRIDGE_ALERT_WEBHOOK"),
@@ -113,6 +118,18 @@ def _validate_positive_int(name: str, value: Any) -> int:
     if out <= 0:
         raise ConfigError(f"{name} must be > 0")
     return out
+
+
+def _to_bool(name: str, value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in {"1", "true", "yes", "on"}:
+            return True
+        if v in {"0", "false", "no", "off"}:
+            return False
+    raise ConfigError(f"{name} must be a boolean")
 
 
 def _validate(data: dict[str, Any]) -> RuntimeConfig:
@@ -149,10 +166,19 @@ def _validate(data: dict[str, Any]) -> RuntimeConfig:
         paperclip_token=data.get("paperclip_token"),
         beads_bin=str(data.get("beads_bin", "bd")),
         gastown_bin=str(data.get("gastown_bin", "gt")),
+        single_writer=_to_bool("single_writer", data.get("single_writer", True)),
+        status_authority=str(data.get("status_authority", "paperclip")),
     )
 
     if cfg.mode == "real" and not cfg.paperclip_base_url:
         raise ConfigError("paperclip_base_url is required when mode=real")
+
+    if cfg.status_authority not in {"paperclip", "beads"}:
+        raise ConfigError("status_authority must be one of: paperclip, beads")
+
+    # current production-safe default: paperclip authority + single-writer enabled
+    if cfg.single_writer and cfg.status_authority != "paperclip":
+        raise ConfigError("single_writer=true requires status_authority=paperclip")
 
     return cfg
 
@@ -173,6 +199,8 @@ def load_config(config_path: str | None = None) -> RuntimeConfig:
         "alerts": {"dlq_warn_threshold": 1},
         "beads_bin": "bd",
         "gastown_bin": "gt",
+        "single_writer": True,
+        "status_authority": "paperclip",
     }
     merged = _deep_merge(defaults, _load_file(config_path))
     merged = _deep_merge(merged, _load_env())

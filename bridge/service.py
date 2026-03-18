@@ -18,10 +18,19 @@ class SyncResult:
 
 
 class BridgeService:
-    def __init__(self, conn: sqlite3.Connection, adapters: AdapterBundle, worker_id: str = "worker-1"):
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        adapters: AdapterBundle,
+        worker_id: str = "worker-1",
+        single_writer: bool = True,
+        status_authority: str = "paperclip",
+    ):
         self.conn = conn
         self.adapters = adapters
         self.worker_id = worker_id
+        self.single_writer = single_writer
+        self.status_authority = status_authority
 
     def _resolve_beads_id_for_paperclip(self, paperclip_item: WorkItem, beads_items: list[WorkItem]) -> str | None:
         """Best-effort mapping from Paperclip issue -> Beads/Gastown bead id.
@@ -89,6 +98,9 @@ class BridgeService:
         for row in db.fetch_pending_outbox(self.conn):
             payload = json.loads(row["payload"])
             try:
+                if self.single_writer and row["target_system"] == "paperclip":
+                    raise ValueError("single_writer policy blocks writes targeting paperclip")
+
                 if row["event_type"] == "status_mirror":
                     self.adapters.beads.set_status(payload["item_id"], payload["status"])
                 elif row["event_type"] == "attach_hook":
@@ -134,7 +146,12 @@ class BridgeService:
             if not b:
                 continue
             if normalize_status(SystemName.PAPERCLIP, p.status) != normalize_status(SystemName.BEADS, b.status):
-                target = denormalize_status(SystemName.BEADS, normalize_status(SystemName.PAPERCLIP, p.status))
-                self.adapters.beads.set_status(item_id, target)
-                result.reconciled += 1
+                if self.status_authority == "paperclip":
+                    target = denormalize_status(SystemName.BEADS, normalize_status(SystemName.PAPERCLIP, p.status))
+                    self.adapters.beads.set_status(item_id, target)
+                    result.reconciled += 1
+                elif self.status_authority == "beads" and not self.single_writer:
+                    target = denormalize_status(SystemName.PAPERCLIP, normalize_status(SystemName.BEADS, b.status))
+                    self.adapters.paperclip.set_status(item_id, target)
+                    result.reconciled += 1
         return result

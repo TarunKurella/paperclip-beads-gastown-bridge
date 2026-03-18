@@ -42,7 +42,13 @@ def build_service(config: RuntimeConfig) -> tuple[BridgeService, JsonLogger, Met
     conn = db.connect(config.db_path)
     db.migrate(conn, str(Path(__file__).parent / "migrations"))
     adapters = build_adapters(config)
-    svc = BridgeService(conn, adapters, worker_id=config.worker_id)
+    svc = BridgeService(
+        conn,
+        adapters,
+        worker_id=config.worker_id,
+        single_writer=config.single_writer,
+        status_authority=config.status_authority,
+    )
     logger = JsonLogger(component="bridge-runtime")
     metrics = Metrics(file_path=config.metrics.file_path)
     alerts = AlertSink(logger=logger, webhook_url=config.alerts.webhook_url)

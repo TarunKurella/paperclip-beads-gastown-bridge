@@ -29,6 +29,8 @@ Teams often use different systems for planning, execution, and coordination. Thi
 
 The goal: fewer manual handoffs, fewer mismatches, more predictable execution.
 
+> Safety default: **single-writer mode ON** (`status_authority=paperclip`) to prevent ping-pong races.
+
 ---
 
 ## What it does
@@ -147,6 +149,8 @@ Key fields:
 - `paperclip_base_url`
 - `paperclip_token` (optional)
 - `beads_bin`, `gastown_bin`
+- `single_writer` (default `true`)
+- `status_authority` (default `paperclip`)
 - `intervals.*`
 - `alerts.dlq_warn_threshold`
 - `metrics.file_path`

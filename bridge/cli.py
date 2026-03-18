@@ -395,6 +395,8 @@ def status(
     payload = {
         "mode": cfg.mode,
         "worker_id": cfg.worker_id,
+        "single_writer": cfg.single_writer,
+        "status_authority": cfg.status_authority,
         "health": snap["health"],
         "paperclip_items": snap["paperclip_items"],
         "beads_items": snap["beads_items"],
@@ -409,7 +411,10 @@ def status(
         typer.echo(json.dumps(payload))
         return
     typer.echo("\nBridge Status")
-    typer.echo(f"mode={payload['mode']} worker={payload['worker_id']} health={payload['health']}")
+    typer.echo(
+        f"mode={payload['mode']} worker={payload['worker_id']} health={payload['health']} "
+        f"single_writer={payload['single_writer']} authority={payload['status_authority']}"
+    )
     typer.echo(f"paperclip={payload['paperclip_items']} beads={payload['beads_items']}")
     typer.echo(
         f"outbox pending={payload['outbox']['pending']} sent={payload['outbox']['sent']} dlq={payload['outbox']['dlq']}"

@@ -138,9 +138,13 @@ bridge plugin-init --output-dir ./integrations/plugin-bridge-ops --package-name 
 bridge plugin-init --output-dir ./integrations/plugin-bridge-ops --package-name @acme/plugin-bridge-ops --with-ci
 ```
 
-This creates a standalone plugin scaffold that calls bridge CLI for:
+This creates a standalone plugin scaffold (npm/TS) that calls bridge CLI (Python) for:
 - status snapshot (`bridge status --json`)
 - outbox drain action (`bridge outbox-drain`)
+
+Runtime contract for plugin worker:
+- `bridge` must be available in PATH (or set `BRIDGE_BIN=/abs/path/to/bridge`)
+- set `BRIDGE_CONFIG_PATH` to the bridge config used by your environment
 
 Install the built plugin in Paperclip via local-path plugin install API.
 

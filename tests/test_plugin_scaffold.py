@@ -13,7 +13,11 @@ def test_create_plugin_scaffold(tmp_path):
     assert (out / "src" / "ui" / "index.tsx").exists()
 
     manifest = (out / "src" / "manifest.ts").read_text()
+    worker = (out / "src" / "worker.ts").read_text()
+    readme = (out / "README.md").read_text()
     assert "acme.plugin-bridge-ops" in manifest
+    assert "BRIDGE_BIN" in worker
+    assert "pip install paperclip-beads-gastown-bridge" in readme
 
 
 def test_create_plugin_scaffold_with_ci(tmp_path):

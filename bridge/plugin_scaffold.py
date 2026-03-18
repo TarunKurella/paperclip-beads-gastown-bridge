@@ -50,11 +50,12 @@ export default manifest;
 WORKER_TS = """import { spawn } from \"node:child_process\";
 import { definePlugin, runWorker, type PaperclipPlugin } from \"@paperclipai/plugin-sdk\";
 
+const BRIDGE_BIN = process.env.BRIDGE_BIN ?? \"bridge\";
 const BRIDGE_CONFIG = process.env.BRIDGE_CONFIG_PATH ?? \"config.real.local.json\";
 
 function runBridge(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(\"bridge\", args, { stdio: [\"ignore\", \"pipe\", \"pipe\"] });
+    const child = spawn(BRIDGE_BIN, args, { stdio: [\"ignore\", \"pipe\", \"pipe\"] });
     let stdout = \"\";
     let stderr = \"\";
     child.stdout.on(\"data\", (d) => (stdout += String(d)));
@@ -135,8 +136,10 @@ This is a standalone Paperclip plugin scaffold that integrates with `paperclip-b
 
 ## Setup
 
-1. Ensure `bridge` CLI is in PATH where Paperclip plugin worker runs.
-2. Optionally set `BRIDGE_CONFIG_PATH` env var.
+1. Install bridge CLI in plugin runtime env (recommended):
+   - `pip install paperclip-beads-gastown-bridge` (or install from source)
+2. Ensure `bridge` is in PATH, or set `BRIDGE_BIN` to absolute binary path.
+3. Optionally set `BRIDGE_CONFIG_PATH` env var.
 3. Build this plugin with your Paperclip plugin toolchain.
 4. Install in Paperclip as local path:
 

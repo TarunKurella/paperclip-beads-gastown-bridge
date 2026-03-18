@@ -112,6 +112,7 @@ bridge start --agent --quiet-json --config config.real.local.json
 - `bridge preflight` — OS-aware dependency checks + fix hints
 - `bridge onboard` — onboarding wizard for real config
 - `bridge walkthrough` — dummy end-to-end tutorial
+- `bridge plugin-init` — scaffold external Paperclip plugin integration (no upstream source edits)
 - `bridge tui` — live terminal dashboard
 - `bridge start` — one-command startup
 
@@ -128,6 +129,18 @@ bridge start --agent --quiet-json --config config.real.local.json
 ### Data/bootstrap
 
 - `bridge migrate --db-path ./state/bridge.db`
+
+### Paperclip plugin integration (without touching Paperclip source)
+
+```bash
+bridge plugin-init --output-dir ./integrations/plugin-bridge-ops --package-name @acme/plugin-bridge-ops
+```
+
+This creates a standalone plugin scaffold that calls bridge CLI for:
+- status snapshot (`bridge status --json`)
+- outbox drain action (`bridge outbox-drain`)
+
+Install the built plugin in Paperclip via local-path plugin install API.
 
 ---
 

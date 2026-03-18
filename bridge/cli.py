@@ -16,6 +16,7 @@ from bridge.config import AlertConfig, ConfigError, MetricsConfig, RuntimeConfig
 from bridge.daemon import run_daemon
 from bridge.mock_adapters import InMemoryBeads, InMemoryGastown, InMemoryPaperclip
 from bridge.models import WorkItem
+from bridge.plugin_scaffold import create_plugin_scaffold
 from bridge.preflight import run_preflight
 from bridge.runtime import build_service
 from bridge.service import BridgeService
@@ -255,6 +256,20 @@ def onboard(
     typer.echo(f"\n✅ Wrote {out}")
     typer.echo("Next: bridge check --config " + out)
     typer.echo("Optional: bridge walkthrough")
+
+
+@app.command("plugin-init")
+def plugin_init(
+    output_dir: str = typer.Option("./integrations/plugin-bridge-ops", "--output-dir", help="Where to create plugin scaffold"),
+    package_name: str = typer.Option("@acme/plugin-bridge-ops", "--package-name", help="NPM package name"),
+) -> None:
+    """Scaffold an external Paperclip plugin that wraps bridge CLI ops.
+
+    This avoids touching Paperclip/Beads/Gastown source code.
+    """
+    out = create_plugin_scaffold(output_dir=output_dir, package_name=package_name)
+    typer.echo(f"plugin scaffold created at: {out}")
+    typer.echo("next: build with your Paperclip plugin toolchain, then install via /api/plugins/install")
 
 
 @app.command("walkthrough")

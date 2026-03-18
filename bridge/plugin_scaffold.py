@@ -105,6 +105,22 @@ const plugin: PaperclipPlugin = definePlugin({
       }
       return { ok: res.code === 0, result: parsed, stderr: res.stderr };
     });
+
+    ctx.actions.register(\"bridge-exec-plan\", async () => {
+      const res = await runBridge([\"exec-plan\", \"--json\", \"--config\", BRIDGE_CONFIG]);
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(res.stdout);
+      } catch {
+        parsed = { raw: res.stdout };
+      }
+      return { ok: res.code === 0, result: parsed, stderr: res.stderr };
+    });
+
+    ctx.actions.register(\"bridge-blockers-push\", async () => {
+      const res = await runBridge([\"blockers-push\", \"--config\", BRIDGE_CONFIG]);
+      return { ok: res.code === 0, stdout: res.stdout, stderr: res.stderr };
+    });
   }
 });
 
@@ -112,72 +128,114 @@ export default plugin;
 runWorker(plugin, import.meta.url);
 """
 
-UI_TSX = """import { useState } from \"react\";
-import { usePluginAction, usePluginData } from \"@paperclipai/plugin-sdk/ui\";
+UI_TSX = """import { useMemo, useState } from "react";
+import { usePluginAction, usePluginData } from "@paperclipai/plugin-sdk/ui";
+
+const box: React.CSSProperties = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 10,
+  padding: 10,
+  background: "#fff",
+};
+
+const kpi: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(70px, 1fr))",
+  gap: 8,
+};
 
 export function BridgeOpsWidget() {
-  const status = usePluginData<{ ok: boolean; data?: any; error?: string }>(\"bridge-status\", {});
-  const drain = usePluginAction(\"bridge-outbox-drain\");
-  const safeCycle = usePluginAction(\"bridge-safe-cycle\");
-  const guardrail = usePluginAction(\"bridge-guardrail-check\");
-  const [paperclipId, setPaperclipId] = useState(\"\");
+  const status = usePluginData<{ ok: boolean; data?: any; error?: string }>("bridge-status", {});
+  const drain = usePluginAction("bridge-outbox-drain");
+  const safeCycle = usePluginAction("bridge-safe-cycle");
+  const guardrail = usePluginAction("bridge-guardrail-check");
+  const execPlan = usePluginAction("bridge-exec-plan");
+  const blockersPush = usePluginAction("bridge-blockers-push");
+  const [paperclipId, setPaperclipId] = useState("");
 
   const snap = status.data?.data;
   const cycle = safeCycle.data?.result;
   const gate = guardrail.data?.result;
+  const plan = (execPlan.data?.result ?? []) as Array<{ beads_id: string; paperclip_id?: string; status?: string; title?: string }>;
+
+  const healthColor = useMemo(() => (snap?.health === "ok" ? "#16a34a" : "#d97706"), [snap?.health]);
 
   return (
-    <section aria-label=\"Bridge Ops Widget\">
-      <strong>Bridge Ops</strong>
-      {status.loading ? <div>Loading…</div> : null}
-      {status.error ? <div>Error: {String(status.error)}</div> : null}
-      {status.data?.ok === false ? <div>Bridge error: {status.data?.error}</div> : null}
-      {snap ? (
-        <ul>
-          <li>health: {snap.health}</li>
-          <li>pending: {snap.outbox?.pending}</li>
-          <li>sent: {snap.outbox?.sent}</li>
-          <li>dlq: {snap.outbox?.dlq}</li>
-          <li>authority: {snap.status_authority}</li>
-          <li>single_writer: {String(snap.single_writer)}</li>
-        </ul>
-      ) : null}
-      <div>
-        <input
-          value={paperclipId}
-          onChange={(e) => setPaperclipId(e.target.value)}
-          placeholder="paperclip issue id"
-        />
-        <button onClick={() => guardrail.mutate({ paperclipId })} disabled={guardrail.loading || !paperclipId}>
-          Guardrail check
-        </button>
+    <section aria-label="Bridge Ops Widget" style={{ display: "grid", gap: 10, fontSize: 13 }}>
+      <div style={{ ...box, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <strong>Bridge Ops</strong>
+        <span style={{ color: healthColor, fontWeight: 700 }}>{String(snap?.health ?? "unknown").toUpperCase()}</span>
       </div>
+
+      {status.loading ? <div style={box}>Loading status…</div> : null}
+      {status.error ? <div style={box}>Error: {String(status.error)}</div> : null}
+      {status.data?.ok === false ? <div style={box}>Bridge error: {status.data?.error}</div> : null}
+
+      {snap ? (
+        <div style={box}>
+          <div style={kpi}>
+            <div><strong>{snap.outbox?.pending}</strong><div>pending</div></div>
+            <div><strong>{snap.outbox?.sent}</strong><div>sent</div></div>
+            <div><strong>{snap.outbox?.dlq}</strong><div>dlq</div></div>
+          </div>
+          <div style={{ marginTop: 8, color: "#475569" }}>
+            authority={snap.status_authority} · single_writer={String(snap.single_writer)}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ ...box, display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => safeCycle.mutate({})} disabled={safeCycle.loading}>Safe run cycle</button>
+          <button onClick={() => drain.mutate({})} disabled={drain.loading}>Drain outbox</button>
+          <button onClick={() => execPlan.mutate({})} disabled={execPlan.loading}>Refresh exec plan</button>
+          <button onClick={() => blockersPush.mutate({})} disabled={blockersPush.loading}>Push blockers</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={paperclipId}
+            onChange={(e) => setPaperclipId(e.target.value)}
+            placeholder="paperclip issue id"
+            style={{ flex: 1 }}
+          />
+          <button onClick={() => guardrail.mutate({ paperclipId })} disabled={guardrail.loading || !paperclipId}>
+            Guardrail check
+          </button>
+        </div>
+      </div>
+
       {gate ? (
-        <div>
+        <div style={box}>
           <strong>Guardrail</strong>
-          <div>allowed: {String(gate.allowed)} | reason: {String(gate.reason)}</div>
-          {gate.beads_id ? <div>beads_id: {String(gate.beads_id)}</div> : null}
+          <div>allowed={String(gate.allowed)} · reason={String(gate.reason)} · owner={String(gate.owner)}</div>
+          {gate.beads_id ? <div>beads_id={String(gate.beads_id)}</div> : null}
         </div>
       ) : null}
-      <button onClick={() => safeCycle.mutate({})} disabled={safeCycle.loading}>
-        Safe run cycle
-      </button>
-      <button onClick={() => drain.mutate({})} disabled={drain.loading}>
-        Drain outbox
-      </button>
+
       {cycle ? (
-        <div>
+        <div style={box}>
           <strong>Cycle result</strong>
-          <ul>
-            <li>phase2_assignments: {cycle.phase2_assignments}</li>
-            <li>skipped_owner: {cycle.phase2_skipped_owner}</li>
-            <li>skipped_unmapped: {cycle.phase2_skipped_unmapped}</li>
-            <li>skipped_lock: {cycle.phase2_skipped_lock}</li>
-          </ul>
+          <div>
+            queued={cycle.phase2_assignments} · skipped_owner={cycle.phase2_skipped_owner} ·
+            skipped_unmapped={cycle.phase2_skipped_unmapped} · skipped_lock={cycle.phase2_skipped_lock}
+          </div>
         </div>
       ) : null}
-      {safeCycle.data ? <pre>{JSON.stringify(safeCycle.data, null, 2)}</pre> : null}
-      {drain.data ? <pre>{JSON.stringify(drain.data, null, 2)}</pre> : null}
+
+      <div style={box}>
+        <strong>DAG exec plan ({plan.length})</strong>
+        {plan.length === 0 ? <div style={{ color: "#64748b" }}>No ready tasks right now</div> : null}
+        {plan.slice(0, 8).map((row) => (
+          <div key={row.beads_id} style={{ marginTop: 6 }}>
+            <code>{row.beads_id}</code> → <code>{row.paperclip_id ?? "(unmapped)"}</code> · {row.status} · {row.title}
+          </div>
+        ))}
+      </div>
+
+      {safeCycle.data ? <pre style={box}>{JSON.stringify(safeCycle.data, null, 2)}</pre> : null}
+      {drain.data ? <pre style={box}>{JSON.stringify(drain.data, null, 2)}</pre> : null}
+      {blockersPush.data ? <pre style={box}>{JSON.stringify(blockersPush.data, null, 2)}</pre> : null}
     </section>
   );
 }

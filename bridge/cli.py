@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import select
 import sys
 import termios
@@ -406,14 +407,18 @@ def tui(
             if keys_enabled:
                 rlist, _, _ = select.select([sys.stdin], [], [], float(refresh_seconds))
                 if rlist:
-                    ch = sys.stdin.read(1).lower()
-                    if ch == "q":
+                    try:
+                        raw = os.read(sys.stdin.fileno(), 32).decode("utf-8", "ignore").lower()
+                    except Exception:
+                        raw = (sys.stdin.read(1) or "").lower()
+
+                    if "q" in raw:
                         break
-                    if ch == "d":
+                    if "d" in raw:
                         drained = svc.process_outbox()
                         last_event = f"outbox-drain sent={drained}"
                         continue
-                    if ch == "r":
+                    if "r" in raw:
                         last_event = "manual refresh"
                         continue
             else:

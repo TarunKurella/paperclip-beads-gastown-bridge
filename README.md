@@ -1,32 +1,61 @@
 # paperclip-beads-gastown-bridge
 
-Self-contained no-fork bridge service for Paperclip, Beads, and Gastown.
+<p align="left">
+  <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-blue" />
+  <img alt="cli" src="https://img.shields.io/badge/CLI-Typer-7A4CE0" />
+  <img alt="tests" src="https://img.shields.io/badge/tests-25%20passing-brightgreen" />
+  <img alt="mode" src="https://img.shields.io/badge/runtime-mock%20%7C%20real-0A7EA4" />
+  <img alt="storage" src="https://img.shields.io/badge/state-sqlite-lightgrey" />
+</p>
 
-## Stack
-- Python 3.11+
-- Typer CLI
-- sqlite3 (stdlib)
-- pytest
+A no-fork operations bridge that keeps **Paperclip**, **Beads**, and **Gastown** in sync — designed for both:
 
-## What is production-ready now
-- Real adapter wiring through config/env (`mode=real`)
-- Scheduler/worker daemon loop with configurable intervals
-- Structured JSON logging + metrics counters flushed to JSON file
-- Alert hooks for outbox failures and DLQ threshold (stdout + optional webhook)
-- Operational CLI: `run-daemon`, `backfill-reconcile`, `outbox-drain`, `doctor`/`check`
-- Config validation with schema + sample config
-- Graceful shutdown on SIGINT/SIGTERM
+- **humans** running it interactively in terminal
+- **agents/automation** running it non-interactively in CI/containers
 
-## Project layout
-- `bridge_spec_v1.md` - full integration specification
-- `bridge/` - implementation
-- `bridge/adapters/` - Paperclip API, Beads CLI, Gastown CLI interfaces
-- `bridge/migrations/` - SQLite migrations
-- `tests/` - contract + behavior + e2e simulation tests
-- `config.sample.json` - single-node deployment config template
-- `config.schema.json` - JSON schema for config
+---
 
-## Setup
+## Why this exists
+
+Teams often use different systems for planning, execution, and coordination. This bridge gives you one operational loop:
+
+1. **Visibility sync** (status alignment)
+2. **Assignment automation** (hook attachment flow)
+3. **Reconcile** (corrects drift)
+4. **Reliable outbox + retries + DLQ** (safe delivery pattern)
+
+The goal: fewer manual handoffs, fewer mismatches, more predictable execution.
+
+---
+
+## What it does
+
+- Real adapter wiring via config/env (`mode=real`)
+- Phase-based orchestration + daemon loop
+- Structured JSON logs
+- Metrics counters persisted to JSON
+- Outbox with retry/backoff and DLQ
+- Health checks (`doctor`, `check`)
+- UX-first commands for onboarding and operations (`preflight`, `onboard`, `walkthrough`, `start`, `tui`)
+
+---
+
+## Architecture (high-level)
+
+```text
+Paperclip API ---> phase1/status map ---->
+                                      Beads CLI
+Paperclip assignee -> phase2/id map -----> Gastown hook attach
+
+phase3 reconcile closes drift between Paperclip and Beads
+
+All writes go through outbox_events (retry/backoff/DLQ)
+```
+
+---
+
+## Install
+
 ```bash
 cd /Users/tarun-agentic/.openclaw/workspace/downloads/paperclip-beads-gastown-bridge
 python3 -m venv .venv
@@ -34,47 +63,158 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
+---
+
+## Quickstart
+
+## Human / interactive
+
+```bash
+bridge preflight
+bridge onboard
+bridge walkthrough
+bridge start
+```
+
+- `preflight`: checks OS dependencies and prints exact install hints (RHEL-ready hints included)
+- `onboard`: interactive wizard to generate real config
+- `walkthrough`: safe dummy flow so you learn behavior before touching production
+- `start`: health + one sync pass + live TUI
+
+## Agent / non-interactive
+
+```bash
+bridge preflight --json
+bridge onboard --yes --out config.real.local.json
+bridge start --agent --quiet-json --config config.real.local.json
+```
+
+- outputs machine-friendly JSON
+- no TUI, no prompt
+
+---
+
+## Command guide
+
+### Setup / UX
+
+- `bridge preflight` — OS-aware dependency checks + fix hints
+- `bridge onboard` — onboarding wizard for real config
+- `bridge walkthrough` — dummy end-to-end tutorial
+- `bridge tui` — live terminal dashboard
+- `bridge start` — one-command startup
+
+### Core operations
+
+- `bridge check --config <file>` — health gate (non-zero on failure)
+- `bridge phase1-sync --config <file>`
+- `bridge phase2-assign --config <file>`
+- `bridge phase3-reconcile --config <file>`
+- `bridge outbox-drain --config <file>`
+- `bridge backfill-reconcile --config <file> --iterations 5`
+- `bridge run-daemon --config <file>`
+
+### Data/bootstrap
+
+- `bridge migrate --db-path ./state/bridge.db`
+
+---
+
+## Real-mode prerequisites
+
+- Paperclip API reachable (example: `http://localhost:3100`)
+- Beads CLI available (`bd`)
+- Gastown CLI available (`gt`)
+- Dolt available for Beads/Gastown runtime
+- tmux recommended for full GT runtime behavior
+
+Use `bridge preflight` to verify quickly.
+
+---
+
 ## Configuration
-1) Copy sample config and edit values:
+
+Use JSON config file (`--config`) + optional env overrides.
+
+Key fields:
+
+- `mode`: `mock` or `real`
+- `db_path`
+- `worker_id`
+- `paperclip_base_url`
+- `paperclip_token` (optional)
+- `beads_bin`, `gastown_bin`
+- `intervals.*`
+- `alerts.dlq_warn_threshold`
+- `metrics.file_path`
+
+You can bootstrap a ready real config with:
+
 ```bash
-cp config.sample.json config.json
-```
-2) Optionally override via env vars:
-- `BRIDGE_MODE`, `BRIDGE_DB_PATH`, `BRIDGE_WORKER_ID`
-- `PAPERCLIP_BASE_URL`, `PAPERCLIP_TOKEN`
-- `BEADS_BIN`, `GASTOWN_BIN`
-- `BRIDGE_METRICS_FILE`, `BRIDGE_ALERT_WEBHOOK`, `BRIDGE_DLQ_WARN_THRESHOLD`
-- interval overrides: `BRIDGE_PHASE1_SECONDS`, `BRIDGE_PHASE2_SECONDS`, `BRIDGE_PHASE3_SECONDS`, `BRIDGE_OUTBOX_DRAIN_SECONDS`, `BRIDGE_LOOP_SLEEP_SECONDS`
-
-## Real usage command order (single node)
-```bash
-# 1) one-time DB migrate
-bridge migrate --db-path ./state/bridge.db
-
-# 2) verify connectivity/health before starting service
-bridge doctor --config config.json
-
-# 3) start daemon (steady-state operation)
-bridge run-daemon --config config.json
-
-# 4) on demand operations
-bridge outbox-drain --config config.json
-bridge backfill-reconcile --config config.json --iterations 5
+bridge onboard --yes --out config.real.local.json
 ```
 
-## Operations runbook
-- **Health check**: run `bridge check --config config.json` (same as doctor, non-zero exit on failure).
-- **Metrics**: inspect configured metrics JSON file (default `bridge.metrics.json`).
-- **Logs**: daemon prints structured JSON logs to stdout.
-- **DLQ triage**:
-  1. Run `bridge outbox-drain --config config.json`.
-  2. Inspect alerts/logs for failing event ids.
-  3. Fix remote cause (auth/availability/mapping).
-  4. Retry processing with `outbox-drain`.
-- **Graceful stop**: send SIGINT/SIGTERM; daemon exits cleanly after current loop.
-- **Recovery**: restart daemon; pending outbox + lease logic resumes safely.
+---
 
-## Test
+## Production runbook
+
+1. **Preflight**
+   ```bash
+   bridge preflight
+   ```
+2. **Health gate**
+   ```bash
+   bridge check --config config.real.local.json
+   ```
+3. **Run daemon**
+   ```bash
+   bridge run-daemon --config config.real.local.json
+   ```
+4. **If backlog accumulates**
+   ```bash
+   bridge outbox-drain --config config.real.local.json
+   bridge backfill-reconcile --config config.real.local.json --iterations 5
+   ```
+
+---
+
+## Troubleshooting
+
+### `check` fails
+- run `bridge preflight`
+- verify Paperclip URL in config
+- verify `bd` / `gt` binaries in PATH
+
+### DLQ increases
+- inspect failing event IDs from logs
+- fix upstream cause (mapping/auth/workspace context)
+- rerun `outbox-drain`
+
+### Agent output noisy in automation
+- use `bridge start --agent --quiet-json` for single JSON summary
+
+---
+
+## Testing
+
 ```bash
 .venv/bin/pytest -q
 ```
+
+Current baseline: **25 passing tests**.
+
+---
+
+## Repo layout
+
+- `bridge/` — app code
+- `bridge/adapters/` — external interfaces
+- `bridge/migrations/` — sqlite schema
+- `tests/` — behavior and integration-safe tests
+- `config.sample.json` / `config.schema.json`
+
+---
+
+## Motivation in one line
+
+**Make multi-system execution feel like one coherent control plane — from terminal, for humans and agents.**

@@ -9,3 +9,7 @@ bridge.db
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+.runtime/
+.events.jsonl
+.events.jsonl.lock
+.dolt-data/

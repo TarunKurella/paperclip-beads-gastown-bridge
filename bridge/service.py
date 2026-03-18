@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from bridge import db
 from bridge.adapters.base import AdapterBundle
 from bridge.mapping import denormalize_status, normalize_status
-from bridge.models import BridgeStatus, SystemName
+from bridge.models import BridgeStatus, SystemName, WorkItem
 
 
 @dataclass
@@ -22,6 +22,36 @@ class BridgeService:
         self.conn = conn
         self.adapters = adapters
         self.worker_id = worker_id
+
+    def _resolve_beads_id_for_paperclip(self, paperclip_item: WorkItem, beads_items: list[WorkItem]) -> str | None:
+        """Best-effort mapping from Paperclip issue -> Beads/Gastown bead id.
+
+        Priority:
+        1) Direct ID match
+        2) Beads raw.external_ref / externalRef equals paperclip id
+        3) Exact title match (case-insensitive)
+        """
+        # 1) direct id
+        for b in beads_items:
+            if b.id == paperclip_item.id:
+                return b.id
+
+        # 2) external reference mapping
+        for b in beads_items:
+            raw = b.raw or {}
+            ext = raw.get("external_ref") or raw.get("externalRef")
+            if ext and str(ext) == str(paperclip_item.id):
+                return b.id
+
+        # 3) title mapping
+        p_title = str((paperclip_item.raw or {}).get("title") or "").strip().lower()
+        if p_title:
+            for b in beads_items:
+                b_title = str((b.raw or {}).get("title") or "").strip().lower()
+                if b_title and b_title == p_title:
+                    return b.id
+
+        return None
 
     def phase1_visibility_sync(self) -> SyncResult:
         result = SyncResult()
@@ -68,17 +98,22 @@ class BridgeService:
 
     def phase2_assignment_automation(self) -> SyncResult:
         result = SyncResult()
+        beads_items = self.adapters.beads.list_items()
         for item in self.adapters.paperclip.list_items():
             if not item.assignee:
                 continue
-            dedupe_key = f"assign:{item.id}:{item.assignee}"
+            beads_id = self._resolve_beads_id_for_paperclip(item, beads_items)
+            if not beads_id:
+                # cannot attach in Gastown without a bead id
+                continue
+            dedupe_key = f"assign:{beads_id}:{item.assignee}"
             db.enqueue_outbox(
                 self.conn,
                 dedupe_key,
                 "attach_hook",
                 "paperclip",
                 "gastown",
-                {"item_id": item.id, "assignee": item.assignee},
+                {"item_id": beads_id, "assignee": item.assignee},
             )
             result.assignments_attached += 1
         return result

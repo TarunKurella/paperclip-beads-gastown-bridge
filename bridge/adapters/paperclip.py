@@ -129,6 +129,18 @@ class PaperclipHTTPAdapter:
             raise ValueError("unexpected paperclip item payload")
         return parse_paperclip_item(payload)
 
+    def get_company_dashboard(self, company_id: str) -> dict:
+        payload = self._request(f"api/companies/{company_id}/dashboard")
+        if not isinstance(payload, dict):
+            raise ValueError("unexpected company dashboard payload")
+        return payload
+
+    def get_company_activity(self, company_id: str) -> list[dict]:
+        payload = self._request(f"api/companies/{company_id}/activity")
+        if isinstance(payload, list):
+            return [x for x in payload if isinstance(x, dict)]
+        return []
+
 
 def parse_paperclip_item(payload: dict) -> WorkItem:
     return WorkItem(

@@ -548,6 +548,37 @@ def status(
     typer.echo(f"next: {payload['next_action']}")
 
 
+@app.command("paperclip-health")
+def paperclip_health(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """Fetch Paperclip company dashboard/activity for operational visibility."""
+    cfg = _load(config)
+    if not cfg.paperclip_company_id:
+        typer.echo("paperclip_company_id missing in config (required for paperclip-health)")
+        raise typer.Exit(code=1)
+
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    dashboard = svc.adapters.paperclip.get_company_dashboard(cfg.paperclip_company_id)
+    activity = svc.adapters.paperclip.get_company_activity(cfg.paperclip_company_id)
+
+    payload = {
+        "company_id": cfg.paperclip_company_id,
+        "dashboard": dashboard,
+        "activity_count": len(activity),
+        "activity_preview": activity[:10],
+    }
+
+    if json_output:
+        typer.echo(json.dumps(payload))
+        return
+
+    typer.echo(f"company={cfg.paperclip_company_id}")
+    typer.echo(f"activity_count={len(activity)}")
+    typer.echo(json.dumps(dashboard, indent=2))
+
+
 @app.command("dlq-replay")
 def dlq_replay(
     config: str | None = typer.Option(None, "--config", help="JSON config file path"),

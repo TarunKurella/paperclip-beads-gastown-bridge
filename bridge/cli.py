@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import select
+import sys
+import termios
 import time
+import tty
 from pathlib import Path
 
 import typer
@@ -292,6 +296,7 @@ def tui(
     config: str | None = typer.Option(None, "--config", help="JSON config file path"),
     refresh_seconds: int = typer.Option(2, min=1, help="Refresh interval in seconds"),
     iterations: int = typer.Option(0, min=0, help="0 = run until Ctrl+C"),
+    keys: bool = typer.Option(True, "--keys/--no-keys", help="Enable keyboard shortcuts (q/r/d) when TTY"),
 ) -> None:
     """Lightweight terminal dashboard for runtime visibility."""
     cfg = _load(config)
@@ -304,6 +309,14 @@ def tui(
         return ("█" * filled) + ("░" * (width - filled))
 
     i = 0
+    last_event = "ready"
+    keys_enabled = keys and sys.stdin.isatty()
+    old_settings = None
+
+    if keys_enabled:
+        old_settings = termios.tcgetattr(sys.stdin.fileno())
+        tty.setcbreak(sys.stdin.fileno())
+
     try:
         while True:
             p_items = svc.adapters.paperclip.list_items()
@@ -336,15 +349,36 @@ def tui(
             typer.echo("├────────────────────────────────────────────────────────────────┤")
             next_action = str(snap["next_action"])[:60]
             typer.echo(f"│ Next: {next_action:<58}│")
-            typer.echo(f"│ {DIM}Tips: Ctrl+C exit • bridge outbox-drain --config <file>{RESET:<42}│")
+            key_help = "q quit • r refresh • d outbox-drain" if keys_enabled else "Ctrl+C exit"
+            typer.echo(f"│ {DIM}Keys: {key_help}{RESET:<50}│")
+            ticker = str(last_event)[:55]
+            typer.echo(f"│ Last: {ticker:<58}│")
             typer.echo(f"╰────────────────────────────────────────────────────────────────╯")
 
             i += 1
             if iterations and i >= iterations:
                 break
-            time.sleep(refresh_seconds)
+
+            if keys_enabled:
+                rlist, _, _ = select.select([sys.stdin], [], [], refresh_seconds)
+                if rlist:
+                    ch = sys.stdin.read(1).lower()
+                    if ch == "q":
+                        break
+                    if ch == "d":
+                        drained = svc.process_outbox()
+                        last_event = f"outbox-drain sent={drained}"
+                        continue
+                    if ch == "r":
+                        last_event = "manual refresh"
+                        continue
+            else:
+                time.sleep(refresh_seconds)
     except KeyboardInterrupt:
         pass
+    finally:
+        if old_settings is not None:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_settings)
 
 
 @app.command("status")

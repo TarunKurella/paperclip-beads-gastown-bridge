@@ -1,0 +1,84 @@
+<svg width="980" height="520" viewBox="0 0 980 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="paperclip-beads-gastown-bridge architecture">
+  <defs>
+    <style>
+      .title { font: 700 26px -apple-system, BlinkMacSystemFont, Segoe UI, Inter, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 14px -apple-system, BlinkMacSystemFont, Segoe UI, Inter, sans-serif; fill: #334155; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; rx: 14; }
+      .box-soft { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; rx: 14; }
+      .label { font: 700 15px -apple-system, BlinkMacSystemFont, Segoe UI, Inter, sans-serif; fill: #0f172a; }
+      .desc { font: 500 12px -apple-system, BlinkMacSystemFont, Segoe UI, Inter, sans-serif; fill: #475569; }
+      .pill { fill: #e2e8f0; rx: 999; }
+      .pill-text { font: 700 11px -apple-system, BlinkMacSystemFont, Segoe UI, Inter, sans-serif; fill: #0f172a; }
+      .arrow { stroke: #0ea5e9; stroke-width: 2.5; marker-end: url(#arrowHead); fill: none; }
+      .arrow2 { stroke: #6366f1; stroke-width: 2.5; marker-end: url(#arrowHead2); fill: none; }
+      .warn { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.5; rx: 10; }
+      .warn-text { font: 600 12px -apple-system, BlinkMacSystemFont, Segoe UI, Inter, sans-serif; fill: #7c2d12; }
+    </style>
+    <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#0ea5e9"/>
+    </marker>
+    <marker id="arrowHead2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6366f1"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="46" class="title">paperclip-beads-gastown-bridge</text>
+  <text x="40" y="70" class="subtitle">Single-writer sync control plane (safe-by-default)</text>
+
+  <rect x="40" y="110" width="250" height="130" class="box"/>
+  <text x="62" y="138" class="label">Paperclip</text>
+  <text x="62" y="158" class="desc">Source of truth (default)</text>
+  <text x="62" y="176" class="desc">Issues + assignees + status</text>
+  <rect x="62" y="192" width="106" height="22" class="pill"/>
+  <text x="75" y="207" class="pill-text">API / polling</text>
+
+  <rect x="365" y="90" width="260" height="300" class="box-soft"/>
+  <text x="387" y="120" class="label">Bridge Runtime</text>
+  <text x="387" y="140" class="desc">phase1 • phase2 • phase3 • outbox</text>
+
+  <rect x="387" y="160" width="216" height="54" class="box"/>
+  <text x="401" y="183" class="label">Phase 1</text>
+  <text x="401" y="200" class="desc">Status mirror</text>
+
+  <rect x="387" y="226" width="216" height="54" class="box"/>
+  <text x="401" y="249" class="label">Phase 2</text>
+  <text x="401" y="266" class="desc">Assignment → Hook attach</text>
+
+  <rect x="387" y="292" width="216" height="54" class="box"/>
+  <text x="401" y="315" class="label">Phase 3</text>
+  <text x="401" y="332" class="desc">Reconcile drift</text>
+
+  <rect x="387" y="358" width="216" height="20" class="pill"/>
+  <text x="398" y="372" class="pill-text">Outbox + retry/backoff + DLQ</text>
+
+  <rect x="690" y="110" width="250" height="130" class="box"/>
+  <text x="712" y="138" class="label">Beads</text>
+  <text x="712" y="158" class="desc">Task state destination</text>
+  <text x="712" y="176" class="desc">Scoped mapping + dedupe keys</text>
+  <rect x="712" y="192" width="96" height="22" class="pill"/>
+  <text x="725" y="207" class="pill-text">CLI (bd)</text>
+
+  <rect x="690" y="270" width="250" height="130" class="box"/>
+  <text x="712" y="298" class="label">Gastown</text>
+  <text x="712" y="318" class="desc">Hook attachment target</text>
+  <text x="712" y="336" class="desc">Session continuity layer</text>
+  <rect x="712" y="352" width="86" height="22" class="pill"/>
+  <text x="725" y="367" class="pill-text">CLI (gt)</text>
+
+  <path d="M290 175 C330 175, 330 175, 365 175" class="arrow"/>
+  <path d="M625 185 C660 185, 660 175, 690 175" class="arrow"/>
+  <path d="M625 260 C660 260, 660 335, 690 335" class="arrow2"/>
+
+  <rect x="40" y="270" width="250" height="130" class="box"/>
+  <text x="62" y="298" class="label">Paperclip Plugin (optional)</text>
+  <text x="62" y="318" class="desc">npm/TS control surface</text>
+  <text x="62" y="336" class="desc">Calls Python bridge CLI</text>
+  <rect x="62" y="352" width="156" height="22" class="pill"/>
+  <text x="75" y="367" class="pill-text">BRIDGE_BIN / BRIDGE_CONFIG_PATH</text>
+
+  <path d="M290 335 C330 335, 330 340, 365 340" class="arrow2"/>
+
+  <rect x="40" y="430" width="900" height="58" class="warn"/>
+  <text x="60" y="455" class="warn-text">Safety default: single_writer=true, status_authority=paperclip.</text>
+  <text x="60" y="474" class="warn-text">Prevents ping-pong writes and race loops when multiple automations coexist.</text>
+</svg>

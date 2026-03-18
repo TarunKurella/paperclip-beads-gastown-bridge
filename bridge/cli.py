@@ -327,6 +327,10 @@ def plugin_install(
         typer.echo(f"plugin install failed: {exc.code}")
         if body:
             typer.echo(body)
+        if exc.code == 404:
+            typer.echo("\nHint: your running Paperclip build does not expose /api/plugins/install.")
+            typer.echo("- verify Paperclip version includes plugin routes")
+            typer.echo("- if using older runtime, update/restart Paperclip and retry")
         raise typer.Exit(code=1)
     except Exception as exc:
         typer.echo(f"plugin install failed: {exc}")

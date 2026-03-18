@@ -37,7 +37,13 @@ class PaperclipHTTPAdapter:
                     time.sleep(0.2 * (attempt + 1))
                     last_exc = exc
                     continue
-                raise RuntimeError(f"paperclip request failed: {method} {url} -> {exc.code}") from exc
+                body = ""
+                try:
+                    body = exc.read().decode("utf-8", "ignore")[:400]
+                except Exception:
+                    body = ""
+                detail = f" ({body})" if body else ""
+                raise RuntimeError(f"paperclip request failed: {method} {url} -> {exc.code}{detail}") from exc
             except urllib.error.URLError as exc:
                 if attempt < attempts - 1:
                     time.sleep(0.2 * (attempt + 1))
@@ -128,6 +134,12 @@ class PaperclipHTTPAdapter:
         if not isinstance(payload, dict):
             raise ValueError("unexpected paperclip item payload")
         return parse_paperclip_item(payload)
+
+    def get_me_agent_id(self) -> str:
+        payload = self._request("api/agents/me")
+        if not isinstance(payload, dict) or not payload.get("id"):
+            raise ValueError("unable to resolve current Paperclip agent id")
+        return str(payload["id"])
 
     def get_company_dashboard(self, company_id: str) -> dict:
         payload = self._request(f"api/companies/{company_id}/dashboard")

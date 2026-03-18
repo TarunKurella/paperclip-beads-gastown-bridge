@@ -845,12 +845,25 @@ def deps_sync(
 def checkout(
     config: str | None = typer.Option(None, "--config", help="JSON config file path"),
     paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
-    agent_id: str | None = typer.Option(None, "--agent-id", help="Agent id for checkout (defaults to worker_id)"),
+    agent_id: str | None = typer.Option(None, "--agent-id", help="Paperclip agent UUID (optional; auto-resolved via /api/agents/me)"),
+    expected_statuses: str = typer.Option("todo,in_progress,blocked", "--expected-statuses", help="Comma-separated expected statuses"),
 ) -> None:
     """Atomic checkout wrapper for Paperclip issues."""
     cfg = _load(config)
     svc, _logger, _metrics, _alerts = build_service(cfg)
-    svc.adapters.paperclip.checkout_item(paperclip_id, agent_id or cfg.worker_id)
+    statuses = [s.strip() for s in expected_statuses.split(",") if s.strip()]
+
+    resolved_agent = agent_id
+    if not resolved_agent:
+        try:
+            resolved_agent = svc.adapters.paperclip.get_me_agent_id()
+        except Exception as exc:
+            raise typer.BadParameter(
+                "Could not auto-resolve Paperclip agent id via /api/agents/me. "
+                "Pass --agent-id <uuid>."
+            ) from exc
+
+    svc.adapters.paperclip.checkout_item(paperclip_id, resolved_agent, expected_statuses=statuses)
     typer.echo("checkout ok")
 
 
@@ -858,12 +871,23 @@ def checkout(
 def release(
     config: str | None = typer.Option(None, "--config", help="JSON config file path"),
     paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
-    agent_id: str | None = typer.Option(None, "--agent-id", help="Agent id for release (defaults to worker_id)"),
+    agent_id: str | None = typer.Option(None, "--agent-id", help="Paperclip agent UUID (optional; auto-resolved via /api/agents/me)"),
 ) -> None:
     """Release ownership wrapper for Paperclip issues."""
     cfg = _load(config)
     svc, _logger, _metrics, _alerts = build_service(cfg)
-    svc.adapters.paperclip.release_item(paperclip_id, agent_id or cfg.worker_id)
+
+    resolved_agent = agent_id
+    if not resolved_agent:
+        try:
+            resolved_agent = svc.adapters.paperclip.get_me_agent_id()
+        except Exception as exc:
+            raise typer.BadParameter(
+                "Could not auto-resolve Paperclip agent id via /api/agents/me. "
+                "Pass --agent-id <uuid>."
+            ) from exc
+
+    svc.adapters.paperclip.release_item(paperclip_id, resolved_agent)
     typer.echo("release ok")
 
 

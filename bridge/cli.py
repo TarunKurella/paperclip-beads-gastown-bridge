@@ -381,7 +381,7 @@ def tui(
                 break
 
             if keys_enabled:
-                rlist, _, _ = select.select([sys.stdin], [], [], refresh_seconds)
+                rlist, _, _ = select.select([sys.stdin], [], [], float(refresh_seconds))
                 if rlist:
                     ch = sys.stdin.read(1).lower()
                     if ch == "q":
@@ -508,6 +508,7 @@ def start(
     quiet_json: bool = typer.Option(False, "--quiet-json", help="With --agent, emit only final JSON summary"),
     skip_tui: bool = typer.Option(False, "--skip-tui", help="Skip TUI after checks/sync"),
     tui_iterations: int = typer.Option(0, min=0, help="TUI iterations (0 = continuous)", show_default=True),
+    tui_refresh_seconds: int = typer.Option(2, min=1, help="TUI refresh interval seconds", show_default=True),
 ) -> None:
     """One-command startup: check + one sync pass + optional TUI.
 
@@ -574,7 +575,7 @@ def start(
 
     if not skip_tui:
         typer.echo("\nOpening live dashboard... (Ctrl+C to exit)\n")
-        tui(config=config, iterations=tui_iterations)
+        tui(config=config, refresh_seconds=tui_refresh_seconds, iterations=tui_iterations, keys=True)
 
 
 if __name__ == "__main__":

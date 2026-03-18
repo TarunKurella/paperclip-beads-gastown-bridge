@@ -54,6 +54,10 @@ bridge walkthrough
 bridge start
 ```
 
+## Quick demo (GIF)
+
+![Bridge quick demo](docs/media/demo.gif)
+
 ---
 
 ## Human vs Agent flows

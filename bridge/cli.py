@@ -341,12 +341,18 @@ def tui(
 
     i = 0
     last_event = "ready"
-    keys_enabled = keys and sys.stdin.isatty()
+    is_tty = sys.stdin.isatty() and sys.stdout.isatty()
+    keys_enabled = keys and is_tty
     old_settings = None
 
     if keys_enabled:
         old_settings = termios.tcgetattr(sys.stdin.fileno())
         tty.setcbreak(sys.stdin.fileno())
+
+    # Use alternate screen buffer to avoid polluting scrollback.
+    if is_tty:
+        sys.stdout.write("\033[?1049h\033[?25l")
+        sys.stdout.flush()
 
     try:
         while True:
@@ -366,25 +372,32 @@ def tui(
             DIM = "\033[2m"
             RESET = "\033[0m"
 
-            print("\033[2J\033[H", end="")
             health_badge = f"{GREEN}OK{RESET}" if snap["health"] == "ok" else f"{YELLOW}WARN{RESET}"
-
-            typer.echo(f"{CYAN}╭──────────────────── Bridge Live Dashboard ────────────────────╮{RESET}")
-            typer.echo(f"│ mode={cfg.mode:<6} worker={cfg.worker_id:<14} {DIM}{time.strftime('%Y-%m-%d %H:%M:%S')}{RESET} │")
-            typer.echo("├────────────────────────────────────────────────────────────────┤")
-            typer.echo(f"│ Health: {health_badge:<52}│")
-            typer.echo(f"│ Paperclip items: {str(snap['paperclip_items']):<6}   Beads items: {str(snap['beads_items']):<27}│")
-            typer.echo("├────────────────────────────────────────────────────────────────┤")
-            typer.echo(f"│ Queue pending: {pending:<4} sent: {sent:<4} dlq: {dlq:<4} {'':<28}│")
-            typer.echo(f"│ Queue mix    : {_bar(sent, total)}  ({sent}/{total} sent){'':<14}│")
-            typer.echo("├────────────────────────────────────────────────────────────────┤")
             next_action = str(snap["next_action"])[:60]
-            typer.echo(f"│ Next: {next_action:<58}│")
             key_help = "q quit • r refresh • d outbox-drain" if keys_enabled else "Ctrl+C exit"
-            typer.echo(f"│ {DIM}Keys: {key_help}{RESET:<50}│")
             ticker = str(last_event)[:55]
-            typer.echo(f"│ Last: {ticker:<58}│")
-            typer.echo(f"╰────────────────────────────────────────────────────────────────╯")
+
+            lines = [
+                f"{CYAN}╭──────────────────── Bridge Live Dashboard ────────────────────╮{RESET}",
+                f"│ mode={cfg.mode:<6} worker={cfg.worker_id:<14} {DIM}{time.strftime('%Y-%m-%d %H:%M:%S')}{RESET} │",
+                "├────────────────────────────────────────────────────────────────┤",
+                f"│ Health: {health_badge:<52}│",
+                f"│ Paperclip items: {str(snap['paperclip_items']):<6}   Beads items: {str(snap['beads_items']):<27}│",
+                "├────────────────────────────────────────────────────────────────┤",
+                f"│ Queue pending: {pending:<4} sent: {sent:<4} dlq: {dlq:<4} {'':<28}│",
+                f"│ Queue mix    : {_bar(sent, total)}  ({sent}/{total} sent){'':<14}│",
+                "├────────────────────────────────────────────────────────────────┤",
+                f"│ Next: {next_action:<58}│",
+                f"│ {DIM}Keys: {key_help}{RESET:<50}│",
+                f"│ Last: {ticker:<58}│",
+                "╰────────────────────────────────────────────────────────────────╯",
+            ]
+
+            if is_tty:
+                sys.stdout.write("\033[2J\033[H" + "\n".join(lines) + "\n")
+                sys.stdout.flush()
+            else:
+                typer.echo("\n".join(lines))
 
             i += 1
             if iterations and i >= iterations:
@@ -410,6 +423,9 @@ def tui(
     finally:
         if old_settings is not None:
             termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_settings)
+        if is_tty:
+            sys.stdout.write("\033[?25h\033[?1049l")
+            sys.stdout.flush()
 
 
 @app.command("status")

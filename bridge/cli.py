@@ -297,6 +297,12 @@ def tui(
     cfg = _load(config)
     svc, _logger, _metrics, _alerts = build_service(cfg)
 
+    def _bar(value: int, total: int, width: int = 18) -> str:
+        if total <= 0:
+            return "░" * width
+        filled = max(0, min(width, int((value / total) * width)))
+        return ("█" * filled) + ("░" * (width - filled))
+
     i = 0
     try:
         while True:
@@ -304,23 +310,34 @@ def tui(
             b_items = svc.adapters.beads.list_items()
             snap = dashboard_snapshot(svc.conn, len(p_items), len(b_items))
 
+            pending = int(snap["outbox_pending"])
+            sent = int(snap["outbox_sent"])
+            dlq = int(snap["outbox_dlq"])
+            total = max(1, pending + sent + dlq)
+
+            # lightweight, ANSI-only styling (no external deps)
+            GREEN = "\033[92m"
+            YELLOW = "\033[93m"
+            CYAN = "\033[96m"
+            DIM = "\033[2m"
+            RESET = "\033[0m"
+
             print("\033[2J\033[H", end="")
-            health_badge = "🟢 OK" if snap["health"] == "ok" else "🟠 WARN"
-            typer.echo("Bridge Live Dashboard")
-            typer.echo(f"mode={cfg.mode} worker={cfg.worker_id} time={time.strftime('%Y-%m-%d %H:%M:%S')}")
-            typer.echo("=" * 58)
-            typer.echo(f"HEALTH  : {health_badge}")
-            typer.echo("-" * 58)
-            typer.echo("SYSTEM")
-            typer.echo(f"  paperclip_items : {snap['paperclip_items']}")
-            typer.echo(f"  beads_items     : {snap['beads_items']}")
-            typer.echo("QUEUE")
-            typer.echo(f"  outbox_pending  : {snap['outbox_pending']}")
-            typer.echo(f"  outbox_sent     : {snap['outbox_sent']}")
-            typer.echo(f"  outbox_dlq      : {snap['outbox_dlq']}")
-            typer.echo("NEXT ACTION")
-            typer.echo(f"  {snap['next_action']}")
-            typer.echo("\nCtrl+C to exit")
+            health_badge = f"{GREEN}OK{RESET}" if snap["health"] == "ok" else f"{YELLOW}WARN{RESET}"
+
+            typer.echo(f"{CYAN}╭──────────────────── Bridge Live Dashboard ────────────────────╮{RESET}")
+            typer.echo(f"│ mode={cfg.mode:<6} worker={cfg.worker_id:<14} {DIM}{time.strftime('%Y-%m-%d %H:%M:%S')}{RESET} │")
+            typer.echo("├────────────────────────────────────────────────────────────────┤")
+            typer.echo(f"│ Health: {health_badge:<52}│")
+            typer.echo(f"│ Paperclip items: {str(snap['paperclip_items']):<6}   Beads items: {str(snap['beads_items']):<27}│")
+            typer.echo("├────────────────────────────────────────────────────────────────┤")
+            typer.echo(f"│ Queue pending: {pending:<4} sent: {sent:<4} dlq: {dlq:<4} {'':<28}│")
+            typer.echo(f"│ Queue mix    : {_bar(sent, total)}  ({sent}/{total} sent){'':<14}│")
+            typer.echo("├────────────────────────────────────────────────────────────────┤")
+            next_action = str(snap["next_action"])[:60]
+            typer.echo(f"│ Next: {next_action:<58}│")
+            typer.echo(f"│ {DIM}Tips: Ctrl+C exit • bridge outbox-drain --config <file>{RESET:<42}│")
+            typer.echo(f"╰────────────────────────────────────────────────────────────────╯")
 
             i += 1
             if iterations and i >= iterations:

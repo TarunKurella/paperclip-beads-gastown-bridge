@@ -106,6 +106,8 @@ bridge run-daemon --config config.real.local.json
 bridge outbox-drain --config config.real.local.json
 bridge dlq-replay --config config.real.local.json
 bridge map-add --config config.real.local.json --paperclip-id <id> --beads-id <id>
+bridge owner-set --config config.real.local.json --paperclip-id <id> --owner beads_runner
+bridge phase-feedback --config config.real.local.json
 ```
 
 ---

@@ -15,6 +15,9 @@ class SyncResult:
     mirrored: int = 0
     assignments_attached: int = 0
     reconciled: int = 0
+    skipped_owner: int = 0
+    skipped_lock: int = 0
+    skipped_unmapped: int = 0
 
 
 class BridgeService:
@@ -23,7 +26,7 @@ class BridgeService:
         conn: sqlite3.Connection,
         adapters: AdapterBundle,
         worker_id: str = "worker-1",
-        single_writer: bool = True,
+        single_writer: bool = False,
         status_authority: str = "paperclip",
         scope_key: str = "default",
     ):
@@ -93,6 +96,7 @@ class BridgeService:
                 )
             db.set_last_synced_status(self.conn, "paperclip", f"{self.scope_key}:{p.id}", p.status)
             db.set_last_synced_status(self.conn, "beads", f"{self.scope_key}:{b.id}", b.status)
+        self.conn.commit()
         return result
 
     def process_outbox(self, max_retries: int = 3, on_failure: callable | None = None) -> int:
@@ -100,13 +104,18 @@ class BridgeService:
         for row in db.fetch_pending_outbox(self.conn):
             payload = json.loads(row["payload"])
             try:
-                if self.single_writer and row["target_system"] == "paperclip":
+                allow_paperclip = bool(payload.get("allow_paperclip_write"))
+                if self.single_writer and row["target_system"] == "paperclip" and not allow_paperclip:
                     raise ValueError("single_writer policy blocks writes targeting paperclip")
 
                 if row["event_type"] == "status_mirror":
                     self.adapters.beads.set_status(payload["item_id"], payload["status"])
                 elif row["event_type"] == "attach_hook":
                     self.adapters.gastown.attach_hook(payload["item_id"], payload["assignee"])
+                    if payload.get("lock_key"):
+                        db.release_run_lock(self.conn, str(payload["lock_key"]), owner=self.worker_id)
+                elif row["event_type"] == "status_feedback":
+                    self.adapters.paperclip.set_status(payload["item_id"], payload["status"])
                 db.mark_outbox_sent(self.conn, row["event_id"])
                 sent += 1
             except Exception as exc:
@@ -121,10 +130,24 @@ class BridgeService:
         for item in self.adapters.paperclip.list_items():
             if not item.assignee:
                 continue
+
+            owner = db.get_execution_owner(self.conn, self.scope_key, item.id) or (
+                "paperclip_runner" if self.single_writer else "beads_runner"
+            )
+            if owner != "beads_runner":
+                result.skipped_owner += 1
+                continue
+
             beads_id = self._resolve_beads_id_for_paperclip(item, beads_items)
             if not beads_id:
-                # cannot attach in Gastown without a bead id
+                result.skipped_unmapped += 1
                 continue
+
+            lock_key = f"{self.scope_key}:run:{item.id}:phase2"
+            if not db.acquire_run_lock(self.conn, lock_key, owner=self.worker_id, ttl_seconds=300):
+                result.skipped_lock += 1
+                continue
+
             dedupe_key = f"{self.scope_key}:assign:{beads_id}:{item.assignee}"
             db.enqueue_outbox(
                 self.conn,
@@ -132,7 +155,7 @@ class BridgeService:
                 "attach_hook",
                 "paperclip",
                 "gastown",
-                {"item_id": beads_id, "assignee": item.assignee},
+                {"item_id": beads_id, "assignee": item.assignee, "lock_key": lock_key},
             )
             result.assignments_attached += 1
         return result
@@ -156,4 +179,45 @@ class BridgeService:
                     target = denormalize_status(SystemName.PAPERCLIP, normalize_status(SystemName.BEADS, b.status))
                     self.adapters.paperclip.set_status(item_id, target)
                     result.reconciled += 1
+        return result
+
+    def phase_feedback_sync(self) -> SyncResult:
+        """Bounded reverse sync: only execution signal statuses from beads -> paperclip.
+
+        Allowed when execution_owner == beads_runner. This avoids broad bi-directional races.
+        """
+        result = SyncResult()
+        p_items = {i.id: i for i in self.adapters.paperclip.list_items()}
+        b_items = self.adapters.beads.list_items()
+        for b in b_items:
+            # find mapped paperclip id by reverse lookup through scoped map table
+            # (simple scan, low volume; can optimize later)
+            mapped_pc = None
+            for row in db.list_id_map(self.conn, scope_key=self.scope_key, limit=10000):
+                if str(row["beads_id"]) == b.id:
+                    mapped_pc = str(row["paperclip_id"])
+                    break
+            if not mapped_pc or mapped_pc not in p_items:
+                continue
+
+            owner = db.get_execution_owner(self.conn, self.scope_key, mapped_pc) or "paperclip_runner"
+            if owner != "beads_runner":
+                result.skipped_owner += 1
+                continue
+
+            norm = normalize_status(SystemName.BEADS, b.status)
+            if norm not in {BridgeStatus.IN_PROGRESS.value, BridgeStatus.BLOCKED.value, BridgeStatus.DONE.value}:
+                continue
+
+            target = denormalize_status(SystemName.PAPERCLIP, norm)
+            dedupe_key = f"{self.scope_key}:feedback:{mapped_pc}:{target}"
+            db.enqueue_outbox(
+                self.conn,
+                dedupe_key,
+                "status_feedback",
+                "beads",
+                "paperclip",
+                {"item_id": mapped_pc, "status": target, "allow_paperclip_write": True},
+            )
+            result.reconciled += 1
         return result

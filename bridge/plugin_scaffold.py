@@ -81,6 +81,17 @@ const plugin: PaperclipPlugin = definePlugin({
       const res = await runBridge([\"outbox-drain\", \"--config\", BRIDGE_CONFIG]);
       return { ok: res.code === 0, stdout: res.stdout, stderr: res.stderr };
     });
+
+    ctx.actions.register(\"bridge-safe-cycle\", async () => {
+      const res = await runBridge([\"start\", \"--agent\", \"--quiet-json\", \"--skip-tui\", \"--config\", BRIDGE_CONFIG]);
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(res.stdout);
+      } catch {
+        parsed = { raw: res.stdout };
+      }
+      return { ok: res.code === 0, result: parsed, stderr: res.stderr };
+    });
   }
 });
 
@@ -93,8 +104,10 @@ UI_TSX = """import { usePluginAction, usePluginData } from \"@paperclipai/plugin
 export function BridgeOpsWidget() {
   const status = usePluginData<{ ok: boolean; data?: any; error?: string }>(\"bridge-status\", {});
   const drain = usePluginAction(\"bridge-outbox-drain\");
+  const safeCycle = usePluginAction(\"bridge-safe-cycle\");
 
   const snap = status.data?.data;
+  const cycle = safeCycle.data?.result;
 
   return (
     <section aria-label=\"Bridge Ops Widget\">
@@ -108,11 +121,28 @@ export function BridgeOpsWidget() {
           <li>pending: {snap.outbox?.pending}</li>
           <li>sent: {snap.outbox?.sent}</li>
           <li>dlq: {snap.outbox?.dlq}</li>
+          <li>authority: {snap.status_authority}</li>
+          <li>single_writer: {String(snap.single_writer)}</li>
         </ul>
       ) : null}
+      <button onClick={() => safeCycle.mutate({})} disabled={safeCycle.loading}>
+        Safe run cycle
+      </button>
       <button onClick={() => drain.mutate({})} disabled={drain.loading}>
         Drain outbox
       </button>
+      {cycle ? (
+        <div>
+          <strong>Cycle result</strong>
+          <ul>
+            <li>phase2_assignments: {cycle.phase2_assignments}</li>
+            <li>skipped_owner: {cycle.phase2_skipped_owner}</li>
+            <li>skipped_unmapped: {cycle.phase2_skipped_unmapped}</li>
+            <li>skipped_lock: {cycle.phase2_skipped_lock}</li>
+          </ul>
+        </div>
+      ) : null}
+      {safeCycle.data ? <pre>{JSON.stringify(safeCycle.data, null, 2)}</pre> : null}
       {drain.data ? <pre>{JSON.stringify(drain.data, null, 2)}</pre> : null}
     </section>
   );
@@ -132,7 +162,8 @@ This is a standalone Paperclip plugin scaffold that integrates with `paperclip-b
 
 - `bridge-status` data endpoint -> calls `bridge status --json`
 - `bridge-outbox-drain` action -> calls `bridge outbox-drain`
-- dashboard widget shows current queue/health
+- `bridge-safe-cycle` action -> calls `bridge start --agent --quiet-json --skip-tui`
+- dashboard widget shows queue/health + skip reasons
 
 ## Setup
 

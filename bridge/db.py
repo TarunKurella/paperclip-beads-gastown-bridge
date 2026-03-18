@@ -199,3 +199,68 @@ def list_id_map(conn: sqlite3.Connection, scope_key: str | None = None, limit: i
         "SELECT scope_key, paperclip_id, beads_id, gastown_target, updated_at FROM id_map_scoped ORDER BY updated_at DESC LIMIT ?",
         (limit,),
     ).fetchall()
+
+
+def set_execution_owner(conn: sqlite3.Connection, scope_key: str, paperclip_id: str, owner: str) -> None:
+    ts = now_ts()
+    conn.execute(
+        """
+        INSERT INTO task_control(scope_key, paperclip_id, execution_owner, updated_at)
+        VALUES(?, ?, ?, ?)
+        ON CONFLICT(scope_key, paperclip_id) DO UPDATE SET
+          execution_owner=excluded.execution_owner,
+          updated_at=excluded.updated_at
+        """,
+        (scope_key, paperclip_id, owner, ts),
+    )
+    conn.commit()
+
+
+def get_execution_owner(conn: sqlite3.Connection, scope_key: str, paperclip_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT execution_owner FROM task_control WHERE scope_key=? AND paperclip_id=?",
+        (scope_key, paperclip_id),
+    ).fetchone()
+    return str(row[0]) if row else None
+
+
+def list_execution_owner(conn: sqlite3.Connection, scope_key: str | None = None, limit: int = 200) -> list[sqlite3.Row]:
+    if scope_key:
+        return conn.execute(
+            "SELECT scope_key, paperclip_id, execution_owner, updated_at FROM task_control WHERE scope_key=? ORDER BY updated_at DESC LIMIT ?",
+            (scope_key, limit),
+        ).fetchall()
+    return conn.execute(
+        "SELECT scope_key, paperclip_id, execution_owner, updated_at FROM task_control ORDER BY updated_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+
+
+def acquire_run_lock(conn: sqlite3.Connection, lock_key: str, owner: str, ttl_seconds: int = 300) -> bool:
+    expires = now_ts() + ttl_seconds
+    conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute("SELECT owner, expires_at FROM run_locks WHERE lock_key=?", (lock_key,)).fetchone()
+    if row is None:
+        conn.execute(
+            "INSERT INTO run_locks(lock_key, owner, expires_at) VALUES (?, ?, ?)",
+            (lock_key, owner, expires),
+        )
+        conn.commit()
+        return True
+    if int(row["expires_at"]) < now_ts() or row["owner"] == owner:
+        conn.execute(
+            "UPDATE run_locks SET owner=?, expires_at=? WHERE lock_key=?",
+            (owner, expires, lock_key),
+        )
+        conn.commit()
+        return True
+    conn.rollback()
+    return False
+
+
+def release_run_lock(conn: sqlite3.Connection, lock_key: str, owner: str | None = None) -> None:
+    if owner:
+        conn.execute("DELETE FROM run_locks WHERE lock_key=? AND owner=?", (lock_key, owner))
+    else:
+        conn.execute("DELETE FROM run_locks WHERE lock_key=?", (lock_key,))
+    conn.commit()

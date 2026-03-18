@@ -78,13 +78,23 @@ def phase1_sync(config: str | None = typer.Option(None, "--config", help="JSON c
 def phase2_assign(config: str | None = typer.Option(None, "--config", help="JSON config file path")) -> None:
     cfg = _load(config)
     svc, logger, metrics, _alerts = build_service(cfg)
-    svc.phase2_assignment_automation()
+    result = svc.phase2_assignment_automation()
     sent = svc.process_outbox()
     metrics.inc("phase2_runs")
     metrics.inc("outbox_sent", sent)
     metrics.flush()
-    logger.info("phase2_complete", sent=sent)
-    typer.echo(f"phase2 complete: sent={sent}")
+    logger.info(
+        "phase2_complete",
+        sent=sent,
+        queued=result.assignments_attached,
+        skipped_owner=result.skipped_owner,
+        skipped_unmapped=result.skipped_unmapped,
+        skipped_lock=result.skipped_lock,
+    )
+    typer.echo(
+        f"phase2 complete: sent={sent} queued={result.assignments_attached} "
+        f"skipped_owner={result.skipped_owner} skipped_unmapped={result.skipped_unmapped} skipped_lock={result.skipped_lock}"
+    )
 
 
 @app.command("phase3-reconcile")
@@ -501,6 +511,61 @@ def map_list(
         typer.echo(f"{r['paperclip_id']} -> {r['beads_id']} (target={r.get('gastown_target')})")
 
 
+@app.command("owner-set")
+def owner_set(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
+    owner: str = typer.Option(..., "--owner", help="paperclip_runner|beads_runner|none"),
+) -> None:
+    """Set execution ownership for a task to prevent duplicate runner triggers."""
+    if owner not in {"paperclip_runner", "beads_runner", "none"}:
+        raise typer.BadParameter("owner must be one of: paperclip_runner, beads_runner, none")
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    db.set_execution_owner(svc.conn, svc.scope_key, paperclip_id, owner)
+    typer.echo("owner saved")
+
+
+@app.command("owner-list")
+def owner_list(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    limit: int = typer.Option(200, min=1, help="Max rows"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """List execution ownership rules."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    rows = [dict(r) for r in db.list_execution_owner(svc.conn, scope_key=svc.scope_key, limit=limit)]
+    if json_output:
+        typer.echo(json.dumps(rows))
+        return
+    if not rows:
+        typer.echo("no ownership rules")
+        return
+    for r in rows:
+        typer.echo(f"{r['paperclip_id']} -> {r['execution_owner']}")
+
+
+@app.command("phase-feedback")
+def phase_feedback(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+) -> None:
+    """Bounded reverse sync: execution signals from beads -> paperclip only."""
+    cfg = _load(config)
+    svc, logger, metrics, alerts = build_service(cfg)
+    result = svc.phase_feedback_sync()
+
+    def _on_failure(row, exc: Exception) -> None:
+        alerts.send("warning", "outbox event failed", event_id=row["event_id"], error=str(exc))
+
+    sent = svc.process_outbox(on_failure=_on_failure)
+    metrics.inc("phase_feedback_runs")
+    metrics.inc("outbox_sent", sent)
+    metrics.flush()
+    logger.info("phase_feedback_complete", queued=result.reconciled, sent=sent, skipped_owner=result.skipped_owner)
+    typer.echo(f"phase-feedback complete: queued={result.reconciled} sent={sent} skipped_owner={result.skipped_owner}")
+
+
 @app.command("start")
 def start(
     config: str = typer.Option("config.real.local.json", "--config", help="JSON config file path"),
@@ -563,6 +628,9 @@ def start(
             "status": "ok",
             "config": config,
             "phase2_assignments": p2.assignments_attached,
+            "phase2_skipped_owner": p2.skipped_owner,
+            "phase2_skipped_unmapped": p2.skipped_unmapped,
+            "phase2_skipped_lock": p2.skipped_lock,
             "outbox_sent": sent,
             "reconciled": rec.reconciled,
             "dlq": dlq,
@@ -570,7 +638,11 @@ def start(
         return
 
     typer.echo("✅ Health check passed")
-    typer.echo(f"phase2 assignments queued: {p2.assignments_attached}")
+    typer.echo(
+        "phase2 assignments queued: "
+        f"{p2.assignments_attached} (skipped_owner={p2.skipped_owner}, "
+        f"skipped_unmapped={p2.skipped_unmapped}, skipped_lock={p2.skipped_lock})"
+    )
     typer.echo(f"outbox sent: {sent} | reconciled: {rec.reconciled} | dlq: {dlq}")
 
     if not skip_tui:

@@ -330,6 +330,99 @@ def tui(
         pass
 
 
+@app.command("status")
+def status(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """Operational snapshot: health + queue counters + inventory counts."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    paperclip_count = len(svc.adapters.paperclip.list_items())
+    beads_count = len(svc.adapters.beads.list_items())
+    snap = dashboard_snapshot(svc.conn, paperclip_count, beads_count)
+    payload = {
+        "mode": cfg.mode,
+        "worker_id": cfg.worker_id,
+        "health": snap["health"],
+        "paperclip_items": snap["paperclip_items"],
+        "beads_items": snap["beads_items"],
+        "outbox": {
+            "pending": snap["outbox_pending"],
+            "sent": snap["outbox_sent"],
+            "dlq": snap["outbox_dlq"],
+        },
+        "next_action": snap["next_action"],
+    }
+    if json_output:
+        typer.echo(json.dumps(payload))
+        return
+    typer.echo("\nBridge Status")
+    typer.echo(f"mode={payload['mode']} worker={payload['worker_id']} health={payload['health']}")
+    typer.echo(f"paperclip={payload['paperclip_items']} beads={payload['beads_items']}")
+    typer.echo(
+        f"outbox pending={payload['outbox']['pending']} sent={payload['outbox']['sent']} dlq={payload['outbox']['dlq']}"
+    )
+    typer.echo(f"next: {payload['next_action']}")
+
+
+@app.command("dlq-replay")
+def dlq_replay(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    limit: int = typer.Option(100, min=1, help="Max DLQ events to replay"),
+) -> None:
+    """Move DLQ events back to pending and attempt processing once."""
+    cfg = _load(config)
+    svc, logger, metrics, alerts = build_service(cfg)
+    moved = db.replay_dlq(svc.conn, limit=limit)
+
+    def _on_failure(row, exc: Exception) -> None:
+        alerts.send("warning", "outbox event failed", event_id=row["event_id"], error=str(exc))
+
+    sent = svc.process_outbox(on_failure=_on_failure)
+    dlq_count = db.count_outbox_by_status(svc.conn, "dlq")
+    metrics.inc("dlq_replay_runs")
+    metrics.inc("outbox_sent", sent)
+    metrics.set("outbox_dlq", dlq_count)
+    metrics.flush()
+    logger.info("dlq_replay_complete", moved=moved, sent=sent, dlq_count=dlq_count)
+    typer.echo(f"dlq replay complete: moved={moved} sent={sent} dlq={dlq_count}")
+
+
+@app.command("map-add")
+def map_add(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
+    beads_id: str = typer.Option(..., "--beads-id", help="Beads issue id"),
+    gastown_target: str | None = typer.Option(None, "--gastown-target", help="Optional gastown target"),
+) -> None:
+    """Add or update explicit cross-system ID mapping."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    db.put_id_map(svc.conn, paperclip_id, beads_id, gastown_target)
+    typer.echo("mapping saved")
+
+
+@app.command("map-list")
+def map_list(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    limit: int = typer.Option(200, min=1, help="Max rows"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """List explicit ID mappings."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    rows = [dict(r) for r in db.list_id_map(svc.conn, limit=limit)]
+    if json_output:
+        typer.echo(json.dumps(rows))
+        return
+    if not rows:
+        typer.echo("no mappings")
+        return
+    for r in rows:
+        typer.echo(f"{r['paperclip_id']} -> {r['beads_id']} (target={r.get('gastown_target')})")
+
+
 @app.command("start")
 def start(
     config: str = typer.Option("config.real.local.json", "--config", help="JSON config file path"),

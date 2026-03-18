@@ -27,10 +27,15 @@ class BridgeService:
         """Best-effort mapping from Paperclip issue -> Beads/Gastown bead id.
 
         Priority:
+        0) Explicit DB map (id_map table)
         1) Direct ID match
         2) Beads raw.external_ref / externalRef equals paperclip id
         3) Exact title match (case-insensitive)
         """
+        explicit = db.get_beads_id_for_paperclip(self.conn, paperclip_item.id)
+        if explicit:
+            return explicit
+
         # 1) direct id
         for b in beads_items:
             if b.id == paperclip_item.id:

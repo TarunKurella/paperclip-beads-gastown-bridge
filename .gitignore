@@ -13,3 +13,15 @@ bridge.db
 .events.jsonl
 .events.jsonl.lock
 .dolt-data/
+
+# local GT/runtime artifacts
+.beads/.beads-credential-key
+.claude/
+CLAUDE.md
+daemon/
+deacon/
+rigs.json
+settings/
+state/
+config.real.local.json
+config.mock.json

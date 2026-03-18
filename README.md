@@ -1,11 +1,14 @@
 # paperclip-beads-gastown-bridge
 
 <p align="left">
+  <a href="https://github.com/TarunKurella/paperclip-beads-gastown-bridge/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/TarunKurella/paperclip-beads-gastown-bridge/actions/workflows/ci.yml/badge.svg" />
+  </a>
   <img alt="python" src="https://img.shields.io/badge/python-3.11%2B-blue" />
   <img alt="cli" src="https://img.shields.io/badge/CLI-Typer-7A4CE0" />
-  <img alt="tests" src="https://img.shields.io/badge/tests-25%20passing-brightgreen" />
   <img alt="mode" src="https://img.shields.io/badge/runtime-mock%20%7C%20real-0A7EA4" />
   <img alt="storage" src="https://img.shields.io/badge/state-sqlite-lightgrey" />
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-green" />
 </p>
 
 A no-fork operations bridge that keeps **Paperclip**, **Beads**, and **Gastown** in sync — designed for both:

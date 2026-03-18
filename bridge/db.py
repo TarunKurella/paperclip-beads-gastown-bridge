@@ -134,3 +134,54 @@ def mark_outbox_retry_or_dlq(conn: sqlite3.Connection, event_id: str, max_retrie
             (retry_count, now_ts() + backoff, event_id),
         )
     conn.commit()
+
+
+def list_outbox(conn: sqlite3.Connection, status: str | None = None, limit: int = 100) -> list[sqlite3.Row]:
+    if status:
+        return conn.execute(
+            "SELECT * FROM outbox_events WHERE status=? ORDER BY created_at DESC LIMIT ?",
+            (status, limit),
+        ).fetchall()
+    return conn.execute("SELECT * FROM outbox_events ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+
+
+def replay_dlq(conn: sqlite3.Connection, limit: int = 100) -> int:
+    rows = conn.execute(
+        "SELECT event_id FROM outbox_events WHERE status='dlq' ORDER BY created_at ASC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    for r in rows:
+        conn.execute(
+            "UPDATE outbox_events SET status='pending', retry_count=0, next_attempt_at=? WHERE event_id=?",
+            (now_ts(), r[0]),
+        )
+    conn.commit()
+    return len(rows)
+
+
+def put_id_map(conn: sqlite3.Connection, paperclip_id: str, beads_id: str, gastown_target: str | None = None) -> None:
+    ts = now_ts()
+    conn.execute(
+        """
+        INSERT INTO id_map(paperclip_id, beads_id, gastown_target, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?)
+        ON CONFLICT(paperclip_id) DO UPDATE SET
+          beads_id=excluded.beads_id,
+          gastown_target=excluded.gastown_target,
+          updated_at=excluded.updated_at
+        """,
+        (paperclip_id, beads_id, gastown_target, ts, ts),
+    )
+    conn.commit()
+
+
+def get_beads_id_for_paperclip(conn: sqlite3.Connection, paperclip_id: str) -> str | None:
+    row = conn.execute("SELECT beads_id FROM id_map WHERE paperclip_id=?", (paperclip_id,)).fetchone()
+    return str(row[0]) if row else None
+
+
+def list_id_map(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT paperclip_id, beads_id, gastown_target, updated_at FROM id_map ORDER BY updated_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()

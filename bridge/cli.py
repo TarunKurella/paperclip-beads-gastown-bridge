@@ -7,6 +7,8 @@ import sys
 import termios
 import time
 import tty
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import typer
@@ -284,6 +286,56 @@ def plugin_init(
     if with_ci:
         typer.echo("included: tsconfig.json + .github/workflows/plugin-ci.yml")
     typer.echo("next: build with your Paperclip plugin toolchain, then install via /api/plugins/install")
+
+
+@app.command("plugin-install")
+def plugin_install(
+    output_dir: str = typer.Option("./integrations/plugin-bridge-ops", "--output-dir", help="Plugin folder path"),
+    package_name: str = typer.Option("@acme/plugin-bridge-ops", "--package-name", help="NPM package name"),
+    with_ci: bool = typer.Option(True, "--with-ci/--no-with-ci", help="Include plugin CI scaffold"),
+    paperclip_base_url: str = typer.Option("http://127.0.0.1:3100", "--paperclip-base-url", help="Paperclip API base URL"),
+    bridge_config_path: str = typer.Option("config.real.local.json", "--bridge-config", help="Bridge config path for plugin runtime"),
+    bridge_bin: str | None = typer.Option(None, "--bridge-bin", help="Bridge binary path (defaults to PATH lookup)"),
+) -> None:
+    """Scaffold plugin and install it into Paperclip as local-path package."""
+    out = create_plugin_scaffold(output_dir=output_dir, package_name=package_name, with_ci=with_ci)
+
+    resolved_bridge_bin = bridge_bin or (os.getenv("BRIDGE_BIN") or "bridge")
+    resolved_bridge_cfg = str(Path(bridge_config_path).resolve())
+
+    payload = {
+        "packageName": str(out),
+        "isLocalPath": True,
+    }
+
+    url = f"{paperclip_base_url.rstrip('/')}/api/plugins/install"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:  # nosec B310
+            body = res.read().decode("utf-8", "ignore")
+            typer.echo(f"plugin installed: {res.status}")
+            if body:
+                typer.echo(body)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "ignore")
+        typer.echo(f"plugin install failed: {exc.code}")
+        if body:
+            typer.echo(body)
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.echo(f"plugin install failed: {exc}")
+        raise typer.Exit(code=1)
+
+    typer.echo("\nSet runtime env for Paperclip plugin worker:")
+    typer.echo(f"export BRIDGE_CONFIG_PATH={resolved_bridge_cfg}")
+    typer.echo(f"export BRIDGE_BIN={resolved_bridge_bin}")
+    typer.echo("(set these in the process that runs Paperclip)")
 
 
 @app.command("walkthrough")

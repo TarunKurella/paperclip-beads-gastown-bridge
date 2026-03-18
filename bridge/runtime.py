@@ -17,7 +17,11 @@ from bridge.service import BridgeService
 def build_adapters(config: RuntimeConfig) -> AdapterBundle:
     if config.mode == "real":
         return AdapterBundle(
-            paperclip=PaperclipHTTPAdapter(base_url=str(config.paperclip_base_url), token=config.paperclip_token),
+            paperclip=PaperclipHTTPAdapter(
+                base_url=str(config.paperclip_base_url),
+                token=config.paperclip_token,
+                company_id=config.paperclip_company_id,
+            ),
             beads=BeadsCLIAdapter(bin_name=config.beads_bin),
             gastown=GastownCLIAdapter(bin_name=config.gastown_bin),
         )
@@ -48,6 +52,7 @@ def build_service(config: RuntimeConfig) -> tuple[BridgeService, JsonLogger, Met
         worker_id=config.worker_id,
         single_writer=config.single_writer,
         status_authority=config.status_authority,
+        scope_key=config.paperclip_company_id or "default",
     )
     logger = JsonLogger(component="bridge-runtime")
     metrics = Metrics(file_path=config.metrics.file_path)

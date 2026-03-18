@@ -41,6 +41,8 @@ class RuntimeConfig:
     alerts: AlertConfig = field(default_factory=AlertConfig)
     paperclip_base_url: str | None = None
     paperclip_token: str | None = None
+    paperclip_company_id: str | None = None
+    paperclip_project_id: str | None = None
     beads_bin: str = "bd"
     gastown_bin: str = "gt"
     # Safety defaults to avoid bi-directional race conditions
@@ -89,6 +91,8 @@ def _load_env() -> dict[str, Any]:
         "worker_id": os.getenv("BRIDGE_WORKER_ID"),
         "paperclip_base_url": os.getenv("PAPERCLIP_BASE_URL"),
         "paperclip_token": os.getenv("PAPERCLIP_TOKEN"),
+        "paperclip_company_id": os.getenv("PAPERCLIP_COMPANY_ID"),
+        "paperclip_project_id": os.getenv("PAPERCLIP_PROJECT_ID"),
         "beads_bin": os.getenv("BEADS_BIN"),
         "gastown_bin": os.getenv("GASTOWN_BIN"),
         "single_writer": os.getenv("BRIDGE_SINGLE_WRITER"),
@@ -164,6 +168,8 @@ def _validate(data: dict[str, Any]) -> RuntimeConfig:
         alerts=alerts,
         paperclip_base_url=data.get("paperclip_base_url"),
         paperclip_token=data.get("paperclip_token"),
+        paperclip_company_id=data.get("paperclip_company_id"),
+        paperclip_project_id=data.get("paperclip_project_id"),
         beads_bin=str(data.get("beads_bin", "bd")),
         gastown_bin=str(data.get("gastown_bin", "gt")),
         single_writer=_to_bool("single_writer", data.get("single_writer", True)),
@@ -199,6 +205,8 @@ def load_config(config_path: str | None = None) -> RuntimeConfig:
         "alerts": {"dlq_warn_threshold": 1},
         "beads_bin": "bd",
         "gastown_bin": "gt",
+        "paperclip_company_id": None,
+        "paperclip_project_id": None,
         "single_writer": True,
         "status_authority": "paperclip",
     }

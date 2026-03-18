@@ -13,9 +13,9 @@ def test_explicit_id_map_is_preferred(conn):
     )
     beads = InMemoryBeads({"bead-a": WorkItem(id="bead-a", status="open", raw={"title": "Other"})})
     gastown = InMemoryGastown()
-    svc = BridgeService(conn, AdapterBundle(paperclip=paperclip, beads=beads, gastown=gastown))
+    svc = BridgeService(conn, AdapterBundle(paperclip=paperclip, beads=beads, gastown=gastown), scope_key="demo")
 
-    db.put_id_map(conn, "pc-1", "bead-a")
+    db.put_id_map(conn, "demo", "pc-1", "bead-a")
     result = svc.phase2_assignment_automation()
     assert result.assignments_attached == 1
 

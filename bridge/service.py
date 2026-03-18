@@ -25,12 +25,14 @@ class BridgeService:
         worker_id: str = "worker-1",
         single_writer: bool = True,
         status_authority: str = "paperclip",
+        scope_key: str = "default",
     ):
         self.conn = conn
         self.adapters = adapters
         self.worker_id = worker_id
         self.single_writer = single_writer
         self.status_authority = status_authority
+        self.scope_key = scope_key
 
     def _resolve_beads_id_for_paperclip(self, paperclip_item: WorkItem, beads_items: list[WorkItem]) -> str | None:
         """Best-effort mapping from Paperclip issue -> Beads/Gastown bead id.
@@ -41,7 +43,7 @@ class BridgeService:
         2) Beads raw.external_ref / externalRef equals paperclip id
         3) Exact title match (case-insensitive)
         """
-        explicit = db.get_beads_id_for_paperclip(self.conn, paperclip_item.id)
+        explicit = db.get_beads_id_for_paperclip(self.conn, self.scope_key, paperclip_item.id)
         if explicit:
             return explicit
 
@@ -80,7 +82,7 @@ class BridgeService:
             b_norm = normalize_status(SystemName.BEADS, b.status)
             if p_norm != b_norm:
                 target_status = denormalize_status(SystemName.BEADS, p_norm)
-                dedupe_key = f"status:{p.id}:{target_status}"
+                dedupe_key = f"{self.scope_key}:status:{p.id}:{target_status}"
                 db.enqueue_outbox(
                     self.conn,
                     dedupe_key,
@@ -89,8 +91,8 @@ class BridgeService:
                     "beads",
                     {"item_id": p.id, "status": target_status},
                 )
-            db.set_last_synced_status(self.conn, "paperclip", p.id, p.status)
-            db.set_last_synced_status(self.conn, "beads", b.id, b.status)
+            db.set_last_synced_status(self.conn, "paperclip", f"{self.scope_key}:{p.id}", p.status)
+            db.set_last_synced_status(self.conn, "beads", f"{self.scope_key}:{b.id}", b.status)
         return result
 
     def process_outbox(self, max_retries: int = 3, on_failure: callable | None = None) -> int:
@@ -123,7 +125,7 @@ class BridgeService:
             if not beads_id:
                 # cannot attach in Gastown without a bead id
                 continue
-            dedupe_key = f"assign:{beads_id}:{item.assignee}"
+            dedupe_key = f"{self.scope_key}:assign:{beads_id}:{item.assignee}"
             db.enqueue_outbox(
                 self.conn,
                 dedupe_key,

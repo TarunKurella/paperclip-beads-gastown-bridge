@@ -31,6 +31,12 @@ The goal: fewer manual handoffs, fewer mismatches, more predictable execution.
 
 > Safety default: **single-writer mode ON** (`status_authority=paperclip`) to prevent ping-pong races.
 
+### Sync trigger strategy
+
+- Primary trigger is **polling** via daemon intervals (`phase1/phase2/phase3/outbox`).
+- Manual triggers are available via CLI commands.
+- No inbound webhook trigger yet (planned enhancement).
+
 ---
 
 ## What it does
@@ -151,6 +157,8 @@ Key fields:
 - `beads_bin`, `gastown_bin`
 - `single_writer` (default `true`)
 - `status_authority` (default `paperclip`)
+- `paperclip_company_id` (recommended for multi-company isolation)
+- `paperclip_project_id` (reserved for project-level routing)
 - `intervals.*`
 - `alerts.dlq_warn_threshold`
 - `metrics.file_path`

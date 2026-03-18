@@ -231,17 +231,20 @@ def onboard(
         beads_bin = default_beads
         gastown_bin = default_gastown
         worker_id = "node-1"
+        company_id = None
     else:
         paperclip_url = typer.prompt("Paperclip base URL", default=default_url)
         beads_bin = typer.prompt("Beads binary", default=default_beads)
         gastown_bin = typer.prompt("Gastown binary", default=default_gastown)
         worker_id = typer.prompt("Worker ID", default="node-1")
+        company_id = typer.prompt("Paperclip company ID (optional, recommended for multi-company)", default="") or None
 
     cfg = RuntimeConfig(
         mode="real",
         db_path="./state/bridge.db",
         worker_id=worker_id,
         paperclip_base_url=paperclip_url,
+        paperclip_company_id=company_id,
         beads_bin=beads_bin,
         gastown_bin=gastown_bin,
         metrics=MetricsConfig(file_path="./state/bridge.metrics.json"),
@@ -395,6 +398,7 @@ def status(
     payload = {
         "mode": cfg.mode,
         "worker_id": cfg.worker_id,
+        "scope_key": svc.scope_key,
         "single_writer": cfg.single_writer,
         "status_authority": cfg.status_authority,
         "health": snap["health"],
@@ -455,7 +459,7 @@ def map_add(
     """Add or update explicit cross-system ID mapping."""
     cfg = _load(config)
     svc, _logger, _metrics, _alerts = build_service(cfg)
-    db.put_id_map(svc.conn, paperclip_id, beads_id, gastown_target)
+    db.put_id_map(svc.conn, svc.scope_key, paperclip_id, beads_id, gastown_target)
     typer.echo("mapping saved")
 
 
@@ -468,7 +472,7 @@ def map_list(
     """List explicit ID mappings."""
     cfg = _load(config)
     svc, _logger, _metrics, _alerts = build_service(cfg)
-    rows = [dict(r) for r in db.list_id_map(svc.conn, limit=limit)]
+    rows = [dict(r) for r in db.list_id_map(svc.conn, scope_key=svc.scope_key, limit=limit)]
     if json_output:
         typer.echo(json.dumps(rows))
         return

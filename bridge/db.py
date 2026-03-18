@@ -159,29 +159,43 @@ def replay_dlq(conn: sqlite3.Connection, limit: int = 100) -> int:
     return len(rows)
 
 
-def put_id_map(conn: sqlite3.Connection, paperclip_id: str, beads_id: str, gastown_target: str | None = None) -> None:
+def put_id_map(
+    conn: sqlite3.Connection,
+    scope_key: str,
+    paperclip_id: str,
+    beads_id: str,
+    gastown_target: str | None = None,
+) -> None:
     ts = now_ts()
     conn.execute(
         """
-        INSERT INTO id_map(paperclip_id, beads_id, gastown_target, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?)
-        ON CONFLICT(paperclip_id) DO UPDATE SET
+        INSERT INTO id_map_scoped(scope_key, paperclip_id, beads_id, gastown_target, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?)
+        ON CONFLICT(scope_key, paperclip_id) DO UPDATE SET
           beads_id=excluded.beads_id,
           gastown_target=excluded.gastown_target,
           updated_at=excluded.updated_at
         """,
-        (paperclip_id, beads_id, gastown_target, ts, ts),
+        (scope_key, paperclip_id, beads_id, gastown_target, ts, ts),
     )
     conn.commit()
 
 
-def get_beads_id_for_paperclip(conn: sqlite3.Connection, paperclip_id: str) -> str | None:
-    row = conn.execute("SELECT beads_id FROM id_map WHERE paperclip_id=?", (paperclip_id,)).fetchone()
+def get_beads_id_for_paperclip(conn: sqlite3.Connection, scope_key: str, paperclip_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT beads_id FROM id_map_scoped WHERE scope_key=? AND paperclip_id=?",
+        (scope_key, paperclip_id),
+    ).fetchone()
     return str(row[0]) if row else None
 
 
-def list_id_map(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+def list_id_map(conn: sqlite3.Connection, scope_key: str | None = None, limit: int = 200) -> list[sqlite3.Row]:
+    if scope_key:
+        return conn.execute(
+            "SELECT scope_key, paperclip_id, beads_id, gastown_target, updated_at FROM id_map_scoped WHERE scope_key=? ORDER BY updated_at DESC LIMIT ?",
+            (scope_key, limit),
+        ).fetchall()
     return conn.execute(
-        "SELECT paperclip_id, beads_id, gastown_target, updated_at FROM id_map ORDER BY updated_at DESC LIMIT ?",
+        "SELECT scope_key, paperclip_id, beads_id, gastown_target, updated_at FROM id_map_scoped ORDER BY updated_at DESC LIMIT ?",
         (limit,),
     ).fetchall()

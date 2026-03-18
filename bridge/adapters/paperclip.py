@@ -12,6 +12,7 @@ from bridge.models import WorkItem
 class PaperclipHTTPAdapter:
     base_url: str
     token: str | None = None
+    company_id: str | None = None
 
     def _request(self, path: str, method: str = "GET", body: dict | None = None) -> dict | list:
         url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -35,6 +36,10 @@ class PaperclipHTTPAdapter:
         # Paperclip OSS local API shape:
         # GET /api/companies -> [{id,...}], then GET /api/companies/{id}/issues
         try:
+            if self.company_id:
+                issues = self._request(f"api/companies/{self.company_id}/issues")
+                if isinstance(issues, list):
+                    return [parse_paperclip_item(x) for x in issues]
             companies = self._request("api/companies")
             if isinstance(companies, list) and companies:
                 company_id = companies[0].get("id")

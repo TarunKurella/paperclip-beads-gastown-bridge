@@ -92,6 +92,19 @@ const plugin: PaperclipPlugin = definePlugin({
       }
       return { ok: res.code === 0, result: parsed, stderr: res.stderr };
     });
+
+    ctx.actions.register(\"bridge-guardrail-check\", async (params) => {
+      const paperclipId = String((params as { paperclipId?: string }).paperclipId ?? \"\").trim();
+      if (!paperclipId) return { ok: false, error: \"paperclipId is required\" };
+      const res = await runBridge([\"guardrail-check\", \"--json\", \"--config\", BRIDGE_CONFIG, \"--paperclip-id\", paperclipId]);
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(res.stdout);
+      } catch {
+        parsed = { raw: res.stdout };
+      }
+      return { ok: res.code === 0, result: parsed, stderr: res.stderr };
+    });
   }
 });
 
@@ -99,15 +112,19 @@ export default plugin;
 runWorker(plugin, import.meta.url);
 """
 
-UI_TSX = """import { usePluginAction, usePluginData } from \"@paperclipai/plugin-sdk/ui\";
+UI_TSX = """import { useState } from \"react\";
+import { usePluginAction, usePluginData } from \"@paperclipai/plugin-sdk/ui\";
 
 export function BridgeOpsWidget() {
   const status = usePluginData<{ ok: boolean; data?: any; error?: string }>(\"bridge-status\", {});
   const drain = usePluginAction(\"bridge-outbox-drain\");
   const safeCycle = usePluginAction(\"bridge-safe-cycle\");
+  const guardrail = usePluginAction(\"bridge-guardrail-check\");
+  const [paperclipId, setPaperclipId] = useState(\"\");
 
   const snap = status.data?.data;
   const cycle = safeCycle.data?.result;
+  const gate = guardrail.data?.result;
 
   return (
     <section aria-label=\"Bridge Ops Widget\">
@@ -124,6 +141,23 @@ export function BridgeOpsWidget() {
           <li>authority: {snap.status_authority}</li>
           <li>single_writer: {String(snap.single_writer)}</li>
         </ul>
+      ) : null}
+      <div>
+        <input
+          value={paperclipId}
+          onChange={(e) => setPaperclipId(e.target.value)}
+          placeholder="paperclip issue id"
+        />
+        <button onClick={() => guardrail.mutate({ paperclipId })} disabled={guardrail.loading || !paperclipId}>
+          Guardrail check
+        </button>
+      </div>
+      {gate ? (
+        <div>
+          <strong>Guardrail</strong>
+          <div>allowed: {String(gate.allowed)} | reason: {String(gate.reason)}</div>
+          {gate.beads_id ? <div>beads_id: {String(gate.beads_id)}</div> : null}
+        </div>
       ) : null}
       <button onClick={() => safeCycle.mutate({})} disabled={safeCycle.loading}>
         Safe run cycle
@@ -163,7 +197,8 @@ This is a standalone Paperclip plugin scaffold that integrates with `paperclip-b
 - `bridge-status` data endpoint -> calls `bridge status --json`
 - `bridge-outbox-drain` action -> calls `bridge outbox-drain`
 - `bridge-safe-cycle` action -> calls `bridge start --agent --quiet-json --skip-tui`
-- dashboard widget shows queue/health + skip reasons
+- `bridge-guardrail-check` action -> calls `bridge guardrail-check --json`
+- dashboard widget shows queue/health + skip reasons + guardrail result
 
 ## Setup
 

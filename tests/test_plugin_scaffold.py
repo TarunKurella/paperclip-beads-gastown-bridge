@@ -17,6 +17,7 @@ def test_create_plugin_scaffold(tmp_path):
     readme = (out / "README.md").read_text()
     assert "acme.plugin-bridge-ops" in manifest
     assert "BRIDGE_BIN" in worker
+    assert "bridge-guardrail-check" in worker
     assert "pip install paperclip-beads-gastown-bridge" in readme
 
 

@@ -33,3 +33,22 @@ def test_phase_feedback_enqueues_limited_reverse_updates(conn):
     assert res.reconciled == 1
     sent = svc.process_outbox()
     assert sent == 1
+
+
+def test_guardrail_check_reasons(conn):
+    paperclip = InMemoryPaperclip({"pc-1": WorkItem(id="pc-1", status="todo", assignee="alice", raw={"title": "A"})})
+    beads = InMemoryBeads({"b-1": WorkItem(id="b-1", status="open", raw={"title": "A"})})
+    svc = BridgeService(conn, AdapterBundle(paperclip=paperclip, beads=beads, gastown=InMemoryGastown()), scope_key="demo", single_writer=True)
+
+    r1 = svc.guardrail_check("pc-1")
+    assert r1["allowed"] is False and r1["reason"] == "owner_mismatch"
+
+    db.set_execution_owner(conn, "demo", "pc-1", "beads_runner")
+    db.put_id_map(conn, "demo", "pc-1", "b-1")
+    r2 = svc.guardrail_check("pc-1")
+    assert r2["allowed"] is True and r2["reason"] == "ok"
+
+    lock_key = "demo:run:pc-1:phase2"
+    db.acquire_run_lock(conn, lock_key, owner="other-worker", ttl_seconds=300)
+    r3 = svc.guardrail_check("pc-1")
+    assert r3["allowed"] is False and r3["reason"] == "lock_active"

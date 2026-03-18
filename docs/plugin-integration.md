@@ -80,7 +80,16 @@ Widget should show:
 - Use ownership rules only where needed:
 
 ```bash
-bridge owner-list --config config.real.local.json
+# allow Beads-side execution only for selected tasks
+bridge owner-set --config config.real.local.json --paperclip-id <paperclip_uuid> --owner beads_runner
+
+# inspect ownership rules
+bridge owner-list --config config.real.local.json --json
+
+# check one task before running
+bridge guardrail-check --config config.real.local.json --paperclip-id <paperclip_uuid> --json
+
+# global status
 bridge status --config config.real.local.json --json
 ```
 
@@ -90,3 +99,11 @@ bridge status --config config.real.local.json --json
 - `phase2_skipped_lock`
 
 These counters are expected safeguards, not failures.
+
+## 9) Optional bounded feedback from Beads -> Paperclip
+
+```bash
+bridge phase-feedback --config config.real.local.json
+```
+
+This only sends execution-signal statuses (in_progress/blocked/done) for tasks owned by `beads_runner`. It is intentionally limited to prevent race loops.

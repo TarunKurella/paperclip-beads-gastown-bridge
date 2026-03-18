@@ -566,6 +566,24 @@ def phase_feedback(
     typer.echo(f"phase-feedback complete: queued={result.reconciled} sent={sent} skipped_owner={result.skipped_owner}")
 
 
+@app.command("guardrail-check")
+def guardrail_check(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """Check if a task is safe/allowed to execute from Beads side (no double-run)."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    payload = svc.guardrail_check(paperclip_id)
+    if json_output:
+        typer.echo(json.dumps(payload))
+        return
+    typer.echo(f"allowed={payload['allowed']} reason={payload['reason']} owner={payload.get('owner')}")
+    if payload.get("beads_id"):
+        typer.echo(f"beads_id={payload['beads_id']}")
+
+
 @app.command("start")
 def start(
     config: str = typer.Option("config.real.local.json", "--config", help="JSON config file path"),

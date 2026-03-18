@@ -37,6 +37,64 @@ class BridgeService:
         self.status_authority = status_authority
         self.scope_key = scope_key
 
+    def guardrail_check(self, paperclip_id: str) -> dict:
+        owner = db.get_execution_owner(self.conn, self.scope_key, paperclip_id) or (
+            "paperclip_runner" if self.single_writer else "beads_runner"
+        )
+        if owner != "beads_runner":
+            return {
+                "allowed": False,
+                "reason": "owner_mismatch",
+                "owner": owner,
+                "paperclip_id": paperclip_id,
+                "scope_key": self.scope_key,
+            }
+
+        lock_key = f"{self.scope_key}:run:{paperclip_id}:phase2"
+        lock = db.get_run_lock(self.conn, lock_key)
+        if lock and int(lock["expires_at"]) >= db.now_ts() and lock["owner"] != self.worker_id:
+            return {
+                "allowed": False,
+                "reason": "lock_active",
+                "owner": owner,
+                "paperclip_id": paperclip_id,
+                "scope_key": self.scope_key,
+                "lock_key": lock_key,
+                "lock_owner": lock["owner"],
+                "lock_expires_at": int(lock["expires_at"]),
+            }
+
+        beads_items = self.adapters.beads.list_items()
+        p_items = {i.id: i for i in self.adapters.paperclip.list_items()}
+        item = p_items.get(paperclip_id)
+        if not item:
+            return {
+                "allowed": False,
+                "reason": "paperclip_not_found",
+                "owner": owner,
+                "paperclip_id": paperclip_id,
+                "scope_key": self.scope_key,
+            }
+
+        beads_id = self._resolve_beads_id_for_paperclip(item, beads_items)
+        if not beads_id:
+            return {
+                "allowed": False,
+                "reason": "unmapped",
+                "owner": owner,
+                "paperclip_id": paperclip_id,
+                "scope_key": self.scope_key,
+            }
+
+        return {
+            "allowed": True,
+            "reason": "ok",
+            "owner": owner,
+            "paperclip_id": paperclip_id,
+            "beads_id": beads_id,
+            "scope_key": self.scope_key,
+        }
+
     def _resolve_beads_id_for_paperclip(self, paperclip_item: WorkItem, beads_items: list[WorkItem]) -> str | None:
         """Best-effort mapping from Paperclip issue -> Beads/Gastown bead id.
 

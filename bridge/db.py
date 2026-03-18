@@ -264,3 +264,7 @@ def release_run_lock(conn: sqlite3.Connection, lock_key: str, owner: str | None 
     else:
         conn.execute("DELETE FROM run_locks WHERE lock_key=?", (lock_key,))
     conn.commit()
+
+
+def get_run_lock(conn: sqlite3.Connection, lock_key: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT lock_key, owner, expires_at FROM run_locks WHERE lock_key=?", (lock_key,)).fetchone()

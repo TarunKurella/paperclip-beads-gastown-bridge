@@ -366,30 +366,23 @@ def tui(
             dlq = int(snap["outbox_dlq"])
             total = max(1, pending + sent + dlq)
 
-            # lightweight, ANSI-only styling (no external deps)
-            GREEN = "\033[92m"
-            YELLOW = "\033[93m"
-            CYAN = "\033[96m"
-            DIM = "\033[2m"
-            RESET = "\033[0m"
-
-            health_badge = f"{GREEN}OK{RESET}" if snap["health"] == "ok" else f"{YELLOW}WARN{RESET}"
-            next_action = str(snap["next_action"])[:60]
+            health_badge = "OK" if snap["health"] == "ok" else "WARN"
+            next_action = str(snap["next_action"])[:58]
             key_help = "q quit • r refresh • d outbox-drain" if keys_enabled else "Ctrl+C exit"
-            ticker = str(last_event)[:55]
+            ticker = str(last_event)[:58]
 
             lines = [
-                f"{CYAN}╭──────────────────── Bridge Live Dashboard ────────────────────╮{RESET}",
-                f"│ mode={cfg.mode:<6} worker={cfg.worker_id:<14} {DIM}{time.strftime('%Y-%m-%d %H:%M:%S')}{RESET} │",
+                "╭──────────────────── Bridge Live Dashboard ────────────────────╮",
+                f"│ mode={cfg.mode:<6} worker={cfg.worker_id:<14} {time.strftime('%Y-%m-%d %H:%M:%S')} │",
                 "├────────────────────────────────────────────────────────────────┤",
-                f"│ Health: {health_badge:<52}│",
+                f"│ Health: {health_badge:<56}│",
                 f"│ Paperclip items: {str(snap['paperclip_items']):<6}   Beads items: {str(snap['beads_items']):<27}│",
                 "├────────────────────────────────────────────────────────────────┤",
                 f"│ Queue pending: {pending:<4} sent: {sent:<4} dlq: {dlq:<4} {'':<28}│",
                 f"│ Queue mix    : {_bar(sent, total)}  ({sent}/{total} sent){'':<14}│",
                 "├────────────────────────────────────────────────────────────────┤",
                 f"│ Next: {next_action:<58}│",
-                f"│ {DIM}Keys: {key_help}{RESET:<50}│",
+                f"│ Keys: {key_help:<58}│",
                 f"│ Last: {ticker:<58}│",
                 "╰────────────────────────────────────────────────────────────────╯",
             ]

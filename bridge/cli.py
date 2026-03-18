@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import select
+import shutil
+import subprocess
 import sys
 import termios
 import time
@@ -328,9 +330,31 @@ def plugin_install(
         if body:
             typer.echo(body)
         if exc.code == 404:
-            typer.echo("\nHint: your running Paperclip build does not expose /api/plugins/install.")
-            typer.echo("- verify Paperclip version includes plugin routes")
-            typer.echo("- if using older runtime, update/restart Paperclip and retry")
+            typer.echo("\nAPI install route unavailable. Trying Paperclip CLI fallback...")
+            paperclip_cli = shutil.which("paperclipai") or shutil.which("paperclip")
+            if paperclip_cli:
+                try:
+                    proc = subprocess.run(
+                        [paperclip_cli, "plugin", "install", str(out)],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    typer.echo("plugin installed via CLI fallback")
+                    if proc.stdout.strip():
+                        typer.echo(proc.stdout.strip())
+                except subprocess.CalledProcessError as cpe:
+                    typer.echo("plugin CLI fallback failed")
+                    if cpe.stdout:
+                        typer.echo(cpe.stdout.strip())
+                    if cpe.stderr:
+                        typer.echo(cpe.stderr.strip())
+                    raise typer.Exit(code=1)
+            else:
+                typer.echo("No paperclip CLI found (paperclipai/paperclip).")
+                typer.echo("Run manually after updating Paperclip:")
+                typer.echo(f"paperclipai plugin install {out}")
+                raise typer.Exit(code=1)
         raise typer.Exit(code=1)
     except Exception as exc:
         typer.echo(f"plugin install failed: {exc}")

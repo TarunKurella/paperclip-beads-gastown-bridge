@@ -716,6 +716,7 @@ def exec_plan(
 @app.command("blockers-push")
 def blockers_push(
     config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    comment_blockers: bool = typer.Option(True, "--comment-blockers/--no-comment-blockers", help="Post blocker detail comments to Paperclip"),
 ) -> None:
     """Push blocked/in_progress/done execution signals from Beads to Paperclip (bounded path)."""
     cfg = _load(config)
@@ -731,7 +732,8 @@ def blockers_push(
             continue
 
         deps = svc.adapters.beads.dependencies_of(b_id)
-        blocked = any((d.status not in {"closed", "done"}) for d in deps)
+        blocked_items = [d for d in deps if d.status not in {"closed", "done"}]
+        blocked = len(blocked_items) > 0
         target = "blocked" if blocked else None
 
         if not blocked:
@@ -756,6 +758,15 @@ def blockers_push(
             "paperclip",
             {"item_id": pc_id, "status": target, "allow_paperclip_write": True},
         )
+        if blocked and comment_blockers:
+            details = ", ".join([f"{d.id}:{d.status}" for d in blocked_items][:8])
+            try:
+                svc.adapters.paperclip.add_comment(
+                    pc_id,
+                    f"Bridge blocker sync: waiting on dependencies -> {details}",
+                )
+            except Exception:
+                pass
         queued += 1
 
     sent = svc.process_outbox()
@@ -797,6 +808,45 @@ def deps_sync(
         applied += 1
 
     typer.echo(f"deps-sync complete: applied={applied} dry_run={dry_run}")
+
+
+@app.command("checkout")
+def checkout(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
+    agent_id: str | None = typer.Option(None, "--agent-id", help="Agent id for checkout (defaults to worker_id)"),
+) -> None:
+    """Atomic checkout wrapper for Paperclip issues."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    svc.adapters.paperclip.checkout_item(paperclip_id, agent_id or cfg.worker_id)
+    typer.echo("checkout ok")
+
+
+@app.command("release")
+def release(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
+    agent_id: str | None = typer.Option(None, "--agent-id", help="Agent id for release (defaults to worker_id)"),
+) -> None:
+    """Release ownership wrapper for Paperclip issues."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    svc.adapters.paperclip.release_item(paperclip_id, agent_id or cfg.worker_id)
+    typer.echo("release ok")
+
+
+@app.command("comment")
+def comment(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    paperclip_id: str = typer.Option(..., "--paperclip-id", help="Paperclip issue UUID"),
+    body: str = typer.Option(..., "--body", help="Comment body"),
+) -> None:
+    """Post comment to a Paperclip issue."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    svc.adapters.paperclip.add_comment(paperclip_id, body)
+    typer.echo("comment posted")
 
 
 @app.command("start")

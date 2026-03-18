@@ -144,10 +144,15 @@ bridge map-add --config config.real.local.json --paperclip-id <id> --beads-id <i
 bridge owner-set --config config.real.local.json --paperclip-id <id> --owner beads_runner
 bridge owner-list --config config.real.local.json --json
 
+# paperclip lifecycle wrappers (atomic)
+bridge checkout --config config.real.local.json --paperclip-id <id>
+bridge release --config config.real.local.json --paperclip-id <id>
+bridge comment --config config.real.local.json --paperclip-id <id> --body "sync note"
+
 # safety + DAG flows
 bridge guardrail-check --config config.real.local.json --paperclip-id <id> --json
 bridge exec-plan --config config.real.local.json --json
-bridge blockers-push --config config.real.local.json
+bridge blockers-push --config config.real.local.json --comment-blockers
 bridge phase-feedback --config config.real.local.json
 bridge deps-sync --config config.real.local.json --edges-file ./edges.json --dry-run
 ```

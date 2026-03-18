@@ -89,9 +89,41 @@ class PaperclipHTTPAdapter:
         return []
 
     def set_status(self, item_id: str, status: str) -> None:
+        # Prefer current API, fallback to legacy endpoint
+        try:
+            self._request(f"api/issues/{item_id}", method="PATCH", body={"status": status})
+            return
+        except Exception:
+            pass
         self._request(f"items/{item_id}/status", method="POST", body={"status": status})
 
+    def add_comment(self, item_id: str, body: str) -> None:
+        try:
+            self._request(f"api/issues/{item_id}/comments", method="POST", body={"body": body})
+            return
+        except Exception:
+            pass
+        # fallback via PATCH comment field
+        self._request(f"api/issues/{item_id}", method="PATCH", body={"comment": body})
+
+    def checkout_item(self, item_id: str, agent_id: str, expected_statuses: list[str] | None = None) -> None:
+        statuses = expected_statuses or ["todo"]
+        self._request(
+            f"api/issues/{item_id}/checkout",
+            method="POST",
+            body={"agentId": agent_id, "expectedStatuses": statuses},
+        )
+
+    def release_item(self, item_id: str, agent_id: str) -> None:
+        self._request(f"api/issues/{item_id}/release", method="POST", body={"agentId": agent_id})
+
     def get_item(self, item_id: str) -> WorkItem:
+        try:
+            payload = self._request(f"api/issues/{item_id}")
+            if isinstance(payload, dict):
+                return parse_paperclip_item(payload)
+        except Exception:
+            pass
         payload = self._request(f"items/{item_id}")
         if not isinstance(payload, dict):
             raise ValueError("unexpected paperclip item payload")

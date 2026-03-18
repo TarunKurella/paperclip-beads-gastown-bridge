@@ -35,6 +35,10 @@ No fragile glue scripts. No source edits in the three upstream systems.
 
 ![Bridge architecture](docs/architecture.svg)
 
+## Feature map
+
+![Bridge feature map](docs/feature-map.svg)
+
 ---
 
 ## 60-second quickstart
@@ -97,6 +101,31 @@ This generates an npm/TS plugin that calls the Python `bridge` CLI.
 
 ---
 
+## Game-changing features (what makes this different)
+
+### 1) **No double-runs by design**
+- execution ownership (`owner-set` / `owner-list`)
+- run-lock guardrails
+- pre-run gate check (`guardrail-check`)
+
+### 2) **DAG-aware execution planning**
+- `exec-plan` surfaces dependency-ready work from Beads
+- `deps-sync` imports dependency edges at scale
+- `blockers-push` propagates blocked/in-progress/done signals safely
+
+### 3) **Safe plugin control surface**
+- plugin widget gives operator UX for:
+  - safe run cycle
+  - guardrail checks
+  - DAG ready queue
+  - blocker push
+- keeps npm plugin + python bridge split clean
+
+### 4) **Race-safe architecture defaults**
+- `single_writer=true`
+- `status_authority=paperclip`
+- bounded reverse communication only (no uncontrolled ping-pong)
+
 ## Commands you’ll actually use
 
 ```bash
@@ -105,12 +134,17 @@ bridge status --config config.real.local.json --json
 bridge run-daemon --config config.real.local.json
 bridge outbox-drain --config config.real.local.json
 bridge dlq-replay --config config.real.local.json
+
+# mapping + execution ownership
 bridge map-add --config config.real.local.json --paperclip-id <id> --beads-id <id>
 bridge owner-set --config config.real.local.json --paperclip-id <id> --owner beads_runner
-bridge phase-feedback --config config.real.local.json
+bridge owner-list --config config.real.local.json --json
+
+# safety + DAG flows
 bridge guardrail-check --config config.real.local.json --paperclip-id <id> --json
 bridge exec-plan --config config.real.local.json --json
 bridge blockers-push --config config.real.local.json
+bridge phase-feedback --config config.real.local.json
 bridge deps-sync --config config.real.local.json --edges-file ./edges.json --dry-run
 ```
 

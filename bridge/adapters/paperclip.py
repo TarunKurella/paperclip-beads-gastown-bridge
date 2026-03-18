@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ class PaperclipHTTPAdapter:
     base_url: str
     token: str | None = None
     company_id: str | None = None
+    retries: int = 2
+    timeout_seconds: int = 20
 
     def _request(self, path: str, method: str = "GET", body: dict | None = None) -> dict | list:
         url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -21,8 +24,37 @@ class PaperclipHTTPAdapter:
         req.add_header("Content-Type", "application/json")
         if self.token:
             req.add_header("Authorization", f"Bearer {self.token}")
-        with urllib.request.urlopen(req, timeout=20) as res:  # nosec B310
-            return json.loads(res.read().decode())
+
+        attempts = max(1, int(self.retries) + 1)
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_seconds) as res:  # nosec B310
+                    return json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                # retry only 5xx responses
+                if 500 <= int(exc.code) < 600 and attempt < attempts - 1:
+                    time.sleep(0.2 * (attempt + 1))
+                    last_exc = exc
+                    continue
+                raise RuntimeError(f"paperclip request failed: {method} {url} -> {exc.code}") from exc
+            except urllib.error.URLError as exc:
+                if attempt < attempts - 1:
+                    time.sleep(0.2 * (attempt + 1))
+                    last_exc = exc
+                    continue
+                raise RuntimeError(f"paperclip request failed: {method} {url} -> network error") from exc
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt < attempts - 1:
+                    time.sleep(0.2 * (attempt + 1))
+                    continue
+                raise RuntimeError(f"paperclip request failed: {method} {url}") from exc
+
+        # defensive fallback (should never hit)
+        if last_exc:
+            raise RuntimeError(f"paperclip request failed: {method} {url}") from last_exc
+        raise RuntimeError(f"paperclip request failed: {method} {url}")
 
     def list_items(self) -> list[WorkItem]:
         # Legacy bridge contract
@@ -47,7 +79,7 @@ class PaperclipHTTPAdapter:
                     issues = self._request(f"api/companies/{company_id}/issues")
                     if isinstance(issues, list):
                         return [parse_paperclip_item(x) for x in issues]
-        except urllib.error.HTTPError:
+        except Exception:
             pass
 
         # If we reached here, rethrow the most compatible call for clearer errors

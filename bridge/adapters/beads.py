@@ -52,6 +52,19 @@ class BeadsCLIAdapter:
         payload = self._json("list")
         return [parse_beads_item(x) for x in _normalize_list_payload(payload)]
 
+    def ready_items(self) -> list[WorkItem]:
+        payload = self._json("ready")
+        rows = payload if isinstance(payload, list) else []
+        return [parse_beads_item(x) for x in rows if isinstance(x, dict)]
+
+    def dependencies_of(self, item_id: str) -> list[WorkItem]:
+        payload = self._json("dep", "list", item_id)
+        rows = payload if isinstance(payload, list) else []
+        return [parse_beads_item(x) for x in rows if isinstance(x, dict)]
+
+    def add_dependency(self, blocked_id: str, blocker_id: str) -> None:
+        self._json("dep", "add", blocked_id, blocker_id)
+
     def set_status(self, item_id: str, status: str) -> None:
         mapped = _to_bd_status(status)
         self._json("update", item_id, "--status", mapped)

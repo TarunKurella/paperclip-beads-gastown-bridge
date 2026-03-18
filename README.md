@@ -108,6 +108,10 @@ bridge dlq-replay --config config.real.local.json
 bridge map-add --config config.real.local.json --paperclip-id <id> --beads-id <id>
 bridge owner-set --config config.real.local.json --paperclip-id <id> --owner beads_runner
 bridge phase-feedback --config config.real.local.json
+bridge guardrail-check --config config.real.local.json --paperclip-id <id> --json
+bridge exec-plan --config config.real.local.json --json
+bridge blockers-push --config config.real.local.json
+bridge deps-sync --config config.real.local.json --edges-file ./edges.json --dry-run
 ```
 
 ---

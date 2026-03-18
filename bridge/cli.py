@@ -584,6 +584,127 @@ def guardrail_check(
         typer.echo(f"beads_id={payload['beads_id']}")
 
 
+@app.command("exec-plan")
+def exec_plan(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    limit: int = typer.Option(50, min=1, help="Max ready tasks"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """Show dependency-aware runnable work from Beads (mapped back to Paperclip when possible)."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    ready = svc.adapters.beads.ready_items()[:limit]
+
+    mappings = [dict(r) for r in db.list_id_map(svc.conn, scope_key=svc.scope_key, limit=10000)]
+    by_beads = {str(r["beads_id"]): str(r["paperclip_id"]) for r in mappings}
+
+    rows = []
+    for item in ready:
+        rows.append(
+            {
+                "beads_id": item.id,
+                "paperclip_id": by_beads.get(item.id),
+                "status": item.status,
+                "title": (item.raw or {}).get("title"),
+            }
+        )
+
+    if json_output:
+        typer.echo(json.dumps(rows))
+        return
+    if not rows:
+        typer.echo("no ready tasks")
+        return
+    for r in rows:
+        typer.echo(f"{r['beads_id']} -> {r.get('paperclip_id')} | {r.get('status')} | {r.get('title')}")
+
+
+@app.command("blockers-push")
+def blockers_push(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+) -> None:
+    """Push blocked/in_progress/done execution signals from Beads to Paperclip (bounded path)."""
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+    mappings = [dict(r) for r in db.list_id_map(svc.conn, scope_key=svc.scope_key, limit=10000)]
+
+    queued = 0
+    for m in mappings:
+        pc_id = str(m["paperclip_id"])
+        b_id = str(m["beads_id"])
+        owner = db.get_execution_owner(svc.conn, svc.scope_key, pc_id) or "paperclip_runner"
+        if owner != "beads_runner":
+            continue
+
+        deps = svc.adapters.beads.dependencies_of(b_id)
+        blocked = any((d.status not in {"closed", "done"}) for d in deps)
+        target = "blocked" if blocked else None
+
+        if not blocked:
+            try:
+                cur = svc.adapters.beads.get_item(b_id)
+                if cur.status in {"active", "in_progress"}:
+                    target = "in_progress"
+                elif cur.status in {"closed", "done", "hooked"}:
+                    target = "done"
+            except Exception:
+                continue
+
+        if not target:
+            continue
+
+        dedupe_key = f"{svc.scope_key}:feedback:auto:{pc_id}:{target}"
+        db.enqueue_outbox(
+            svc.conn,
+            dedupe_key,
+            "status_feedback",
+            "beads",
+            "paperclip",
+            {"item_id": pc_id, "status": target, "allow_paperclip_write": True},
+        )
+        queued += 1
+
+    sent = svc.process_outbox()
+    typer.echo(f"blockers-push complete: queued={queued} sent={sent}")
+
+
+@app.command("deps-sync")
+def deps_sync(
+    config: str | None = typer.Option(None, "--config", help="JSON config file path"),
+    edges_file: str = typer.Option(..., "--edges-file", help="JSON file with dependency edges"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview only"),
+) -> None:
+    """Apply dependency edges into Beads using mapped IDs.
+
+    edges-file format:
+    [{"blocked":"<paperclip_or_beads_id>", "blocker":"<paperclip_or_beads_id>"}, ...]
+    """
+    cfg = _load(config)
+    svc, _logger, _metrics, _alerts = build_service(cfg)
+
+    with open(edges_file, "r", encoding="utf-8") as f:
+        edges = json.load(f)
+
+    mappings = [dict(r) for r in db.list_id_map(svc.conn, scope_key=svc.scope_key, limit=10000)]
+    pc_to_beads = {str(r["paperclip_id"]): str(r["beads_id"]) for r in mappings}
+
+    def _resolve(x: str) -> str:
+        return pc_to_beads.get(x, x)
+
+    applied = 0
+    for e in edges:
+        blocked = _resolve(str(e["blocked"]))
+        blocker = _resolve(str(e["blocker"]))
+        if dry_run:
+            typer.echo(f"would add: {blocker} blocks {blocked}")
+            applied += 1
+            continue
+        svc.adapters.beads.add_dependency(blocked, blocker)
+        applied += 1
+
+    typer.echo(f"deps-sync complete: applied={applied} dry_run={dry_run}")
+
+
 @app.command("start")
 def start(
     config: str = typer.Option("config.real.local.json", "--config", help="JSON config file path"),

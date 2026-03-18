@@ -134,6 +134,8 @@ bridge start --agent --quiet-json --config config.real.local.json
 
 ```bash
 bridge plugin-init --output-dir ./integrations/plugin-bridge-ops --package-name @acme/plugin-bridge-ops
+# optional: include plugin CI boilerplate
+bridge plugin-init --output-dir ./integrations/plugin-bridge-ops --package-name @acme/plugin-bridge-ops --with-ci
 ```
 
 This creates a standalone plugin scaffold that calls bridge CLI for:

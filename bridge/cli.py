@@ -262,13 +262,16 @@ def onboard(
 def plugin_init(
     output_dir: str = typer.Option("./integrations/plugin-bridge-ops", "--output-dir", help="Where to create plugin scaffold"),
     package_name: str = typer.Option("@acme/plugin-bridge-ops", "--package-name", help="NPM package name"),
+    with_ci: bool = typer.Option(False, "--with-ci", help="Include plugin tsconfig + GitHub Actions CI scaffold"),
 ) -> None:
     """Scaffold an external Paperclip plugin that wraps bridge CLI ops.
 
     This avoids touching Paperclip/Beads/Gastown source code.
     """
-    out = create_plugin_scaffold(output_dir=output_dir, package_name=package_name)
+    out = create_plugin_scaffold(output_dir=output_dir, package_name=package_name, with_ci=with_ci)
     typer.echo(f"plugin scaffold created at: {out}")
+    if with_ci:
+        typer.echo("included: tsconfig.json + .github/workflows/plugin-ci.yml")
     typer.echo("next: build with your Paperclip plugin toolchain, then install via /api/plugins/install")
 
 

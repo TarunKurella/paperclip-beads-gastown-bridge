@@ -151,8 +151,42 @@ curl -X POST http://127.0.0.1:3100/api/plugins/install \
 This scaffold is intentionally minimal and safe. Expand actions only if needed.
 """
 
+CI_YML = """name: Plugin CI
 
-def create_plugin_scaffold(output_dir: str, package_name: str = "@acme/plugin-bridge-ops") -> Path:
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: corepack enable
+      - run: pnpm install
+      - run: pnpm run typecheck || true
+      - run: pnpm run build || true
+"""
+
+TSCONFIG_JSON = """{
+  \"compilerOptions\": {
+    \"target\": \"ES2022\",
+    \"module\": \"ESNext\",
+    \"moduleResolution\": \"Bundler\",
+    \"jsx\": \"react-jsx\",
+    \"strict\": true,
+    \"skipLibCheck\": true,
+    \"noEmit\": true
+  },
+  \"include\": [\"src/**/*\"]
+}
+"""
+
+
+def create_plugin_scaffold(output_dir: str, package_name: str = "@acme/plugin-bridge-ops", with_ci: bool = False) -> Path:
     out = Path(output_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
     plugin_id = package_name.replace("@", "").replace("/", ".")
@@ -166,5 +200,11 @@ def create_plugin_scaffold(output_dir: str, package_name: str = "@acme/plugin-br
     (out / "src" / "worker.ts").write_text(WORKER_TS)
     (out / "src" / "ui" / "index.tsx").write_text(UI_TSX)
     (out / "src" / "index.ts").write_text('export { default as manifest } from "./manifest";\n')
+
+    if with_ci:
+        (out / "tsconfig.json").write_text(TSCONFIG_JSON)
+        gh = out / ".github" / "workflows"
+        gh.mkdir(parents=True, exist_ok=True)
+        (gh / "plugin-ci.yml").write_text(CI_YML)
 
     return out

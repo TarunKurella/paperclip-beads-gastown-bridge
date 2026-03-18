@@ -14,3 +14,9 @@ def test_create_plugin_scaffold(tmp_path):
 
     manifest = (out / "src" / "manifest.ts").read_text()
     assert "acme.plugin-bridge-ops" in manifest
+
+
+def test_create_plugin_scaffold_with_ci(tmp_path):
+    out = create_plugin_scaffold(str(tmp_path / "plugin-ci"), package_name="@acme/plugin-bridge-ops", with_ci=True)
+    assert (out / "tsconfig.json").exists()
+    assert (out / ".github" / "workflows" / "plugin-ci.yml").exists()
